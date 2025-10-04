@@ -1,0 +1,571 @@
+"""
+IB Mock Exam Tool (Resilient input + safe non-interactive mode)
+===============================================================
+
+This file is a resilient single-file Python CLI for generating IB-style mock exams.
+It handles missing optional packages (`openai`, `rich`, `markdown_it`) and—critically—
+works in environments where standard input is not available (sandboxed CI / notebook runtimes).
+
+Strategy for robust input handling:
+- All user-facing input() calls go through `safe_input()` which:
+  - First checks a queue populated from the environment variable `IBMOCK_INPUTS` (JSON array or newline-separated)
+  - Then checks a file specified by `IBMOCK_INPUT_FILE` (defaults to /tmp/ibmock_inputs.txt)
+  - Finally attempts the builtin `input()` and gracefully returns an empty string on failure (EOFError/OSError).
+- If the process has no controlling terminal (sys.stdin.isatty() is False) and the script is launched
+  without the explicit `test` argument, the script will run the built-in tests and exit instead of
+  trying to enter interactive mode. This prevents I/O errors in non-interactive sandboxes.
+
+Run:
+    python IB_MockExam_Tool.py        # interactive (if terminal available)
+    python IB_MockExam_Tool.py test   # run built-in tests
+
+License: MIT
+"""
+
+import os
+import sys
+import time
+import tempfile
+import subprocess
+import json
+from typing import Tuple, List, Optional
+import importlib.util as _importlib_util
+
+# ---------- Safe module detection (no top-level imports that may crash) ----------
+
+def _module_exists(name: str) -> bool:
+    try:
+        return _importlib_util.find_spec(name) is not None
+    except Exception:
+        return False
+
+# Detect optional modules (booleans only; avoid risky imports that may crash)
+OPENAI_INSTALLED = _module_exists("openai")
+RICH_INSTALLED = _module_exists("rich")
+MARKDOWN_IT_INSTALLED = _module_exists("markdown_it")
+
+# Do NOT import typer to avoid markdown_it-related crashes in some environments
+TYPER_INSTALLED = False
+TYPER_SAFE_TO_USE = False
+typer = None
+
+# Attempt to import openai only if present
+openai = None
+if OPENAI_INSTALLED:
+    try:
+        import openai  # type: ignore
+    except Exception:
+        openai = None
+        OPENAI_INSTALLED = False
+
+# Import rich only when both rich and markdown_it are available
+RICH_AVAILABLE = False
+_console = None
+_Prompt = None
+if RICH_INSTALLED and MARKDOWN_IT_INSTALLED:
+    try:
+        from rich.console import Console  # type: ignore
+        from rich.prompt import Prompt  # type: ignore
+        _console = Console()
+        _Prompt = Prompt
+        RICH_AVAILABLE = True
+    except Exception:
+        _console = None
+        _Prompt = None
+        RICH_AVAILABLE = False
+
+# ---------- Robust input queue + safe_input ----------
+_INPUT_QUEUE: Optional[List[str]] = None
+
+def _init_input_queue() -> None:
+    """Initialize the input queue from environment variable or file (if provided).
+
+    Environment variable formats supported:
+    - JSON array string: '["a","b"]'
+    - Plain text with newlines: "a\nb\n"
+    """
+    global _INPUT_QUEUE
+    if _INPUT_QUEUE is not None:
+        return
+    _INPUT_QUEUE = []
+
+    v = os.environ.get("IBMOCK_INPUTS")
+    if v:
+        # Try JSON first
+        try:
+            parsed = json.loads(v)
+            if isinstance(parsed, list):
+                _INPUT_QUEUE = [str(x) for x in parsed]
+                return
+        except Exception:
+            pass
+        # Fallback to newline-separated
+        _INPUT_QUEUE = [line for line in v.splitlines() if line != ""]
+        return
+
+    # Try reading from a file
+    path = os.environ.get("IBMOCK_INPUT_FILE", "/tmp/ibmock_inputs.txt")
+    try:
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as f:
+                _INPUT_QUEUE = [line.rstrip("\n") for line in f if line.strip() != ""]
+    except Exception:
+        _INPUT_QUEUE = []
+
+
+def safe_input(prompt: str = "") -> str:
+    """Robust input that first uses an input queue (from env/file) then falls back to builtin input.
+
+    Returns an empty string if no input is possible.
+    """
+    _init_input_queue()
+    global _INPUT_QUEUE
+    try:
+        if _INPUT_QUEUE:
+            return _INPUT_QUEUE.pop(0)
+    except Exception:
+        # If anything is wrong with queue, ignore and try builtin input
+        pass
+
+    # If stdin is not a tty, avoid calling input() because it often raises in sandboxes
+    if not sys.stdin or not sys.stdin.isatty():
+        return ""
+
+    try:
+        return input(prompt)
+    except (EOFError, OSError):
+        return ""
+
+# ---------- Console & prompt fallbacks ----------
+if _console is not None:
+    console = _console
+else:
+    class _SimpleConsole:
+        def print(self, *args, **kwargs):
+            end = kwargs.get("end", "\n")
+            sep = kwargs.get("sep", " ")
+            built = sep.join(str(a) for a in args)
+            sys.stdout.write(built + end)
+        def rule(self, title: str = ""):
+            if title:
+                sys.stdout.write("\n" + title + "\n" + "-" * max(20, len(title)) + "\n")
+            else:
+                sys.stdout.write("\n" + "-" * 40 + "\n")
+    console = _SimpleConsole()
+
+if _Prompt is not None:
+    def prompt_ask(message: str, default: str = "") -> str:
+        # Use rich Prompt if available, but still go through safe_input for fallbacks
+        try:
+            val = _Prompt.ask(message, default=default)
+            if val is None:
+                return default
+            return str(val)
+        except Exception:
+            # If rich Prompt misbehaves, use safe_input
+            pass
+
+# Fallback prompt_ask uses safe_input
+if '_Prompt' not in globals() or _Prompt is None:
+    def prompt_ask(message: str, default: str = "") -> str:
+        if default:
+            reply = safe_input(f"{message} [{default}]: ")
+            return reply.strip() or default
+        else:
+            return safe_input(f"{message}: ")
+
+# ---------- Rubrics (unchanged) ----------
+RUBRICS = {
+    "English_Paper1": {
+        "description": "Paper 1: Guided textual analysis. Marks out of 20.",
+        "markbands": [
+            (17, 20, "Excellent: sophisticated, insightful analysis, excellent structure, fluent language."),
+            (13, 16, "Good: clear and relevant analysis, good use of textual evidence, coherent structure."),
+            (9, 12, "Satisfactory: some valid analysis but uneven development or explanation."),
+            (5, 8, "Limited: superficial, limited textual support, language problems."),
+            (0, 4, "Very limited/none: fails to address the task convincingly.")
+        ]
+    },
+    "English_Paper2": {
+        "description": "Paper 2: Comparative essay. Marks out of 25.",
+        "markbands": [
+            (22, 25, "Excellent: fully addresses question, compares texts insightfully, excellent argument."),
+            (17, 21, "Good: clear argument, good comparison and evidence."),
+            (12, 16, "Satisfactory: addresses task but comparison or argument is uneven."),
+            (6, 11, "Limited: weak argument, little comparison, structural or language issues."),
+            (0, 5, "Very limited/none: poor or no response to the task.")
+        ]
+    },
+    "Global_Politics_Paper1": {
+        "description": "Paper 1: Conceptual analysis/short-answer. Marks out of 20.",
+        "markbands": [
+            (17, 20, "Excellent: precise use of political concepts and strong analysis."),
+            (13, 16, "Good: clear understanding and application of concepts."),
+            (9, 12, "Satisfactory: some understanding but lacking depth."),
+            (5, 8, "Limited: weak conceptual use and argument."),
+            (0, 4, "Very limited/none: fails to demonstrate required knowledge.")
+        ]
+    },
+    "Global_Politics_Paper2": {
+        "description": "Paper 2: Essay. Marks out of 25.",
+        "markbands": [
+            (22, 25, "Excellent: excellent knowledge, strong argument, critical evaluation."),
+            (17, 21, "Good: well-structured argument, good use of evidence."),
+            (12, 16, "Satisfactory: balances argument but lacks depth or evaluation."),
+            (6, 11, "Limited: weak structure and limited evidence or analysis."),
+            (0, 5, "Very limited/none: poor understanding and argument.")
+        ]
+    }
+}
+
+# ---------- Core functionality ----------
+
+def choose(options: List[str]) -> str:
+    for i, opt in enumerate(options, start=1):
+        console.print(f"{i}. {opt}")
+    choice = prompt_ask("Choose an option by number", default="1")
+    try:
+        idx = int(choice) - 1
+        return options[max(0, min(idx, len(options) - 1))]
+    except Exception:
+        return options[0]
+
+
+def generate_prompt(subject: str, level: str, topic: str, paper: str) -> Tuple[str, int]:
+    subj = subject.lower()
+    lvl = level.upper()
+
+    if subj.startswith("english"):
+        if paper.endswith("1"):
+            minutes = 60
+            prompt = (
+                f"You are given an unseen passage. Write a detailed textual analysis focusing on "
+                f"language, structure, and form, and how they create meaning in the text. "
+                f"Topic / context: {topic}. You should reach a coherent argument and support it with close textual references."
+            )
+        else:
+            minutes = 120
+            prompt = (
+                f"Write an essay responding to a comparative question on {topic}. Choose two texts (real or hypothetical) and compare how they explore the given theme. "
+                f"Make sure to develop a thesis, compare devices and effects, and conclude effectively."
+            )
+    else:  # Global Politics
+        if paper.endswith("1"):
+            minutes = 60
+            prompt = (
+                f"Answer the short-answer/explanation questions on the topic of {topic}. Focus on political concepts, examples, and clear argumentation. "
+                f"Be concise but accurate, and use real-world examples when relevant."
+            )
+        else:
+            minutes = 120
+            prompt = (
+                f"Write an argumentative essay on {topic} using political theory, case studies, and critical evaluation. "
+                f"Develop a strong thesis and evaluate different perspectives before concluding."
+            )
+
+    return prompt, minutes
+
+
+def open_in_editor(initial_text: str = "") -> str:
+    """Try to open user's editor. If unavailable, fallback to queued input or env/default answer."""
+    editor = os.environ.get("EDITOR") or ("notepad" if os.name == "nt" else "nano")
+    with tempfile.NamedTemporaryFile(suffix=".md", delete=False, mode="w", encoding="utf-8") as tf:
+        path = tf.name
+        tf.write(initial_text)
+
+    try:
+        try:
+            subprocess.call([editor, path])
+        except Exception:
+            console.print("Could not open external editor.")
+            # Prefer an explicit default answer if provided
+            default_ans = os.environ.get("IBMOCK_DEFAULT_ANSWER")
+            if default_ans:
+                with open(path, "w", encoding="utf-8") as f:
+                    f.write(default_ans)
+            else:
+                # Use queued inputs if available
+                _init_input_queue()
+                global _INPUT_QUEUE
+                if _INPUT_QUEUE:
+                    # Collect until sentinel '---' or until exhausted
+                    lines = []
+                    while _INPUT_QUEUE:
+                        line = _INPUT_QUEUE.pop(0)
+                        if line.strip() == "---":
+                            break
+                        lines.append(line)
+                    if lines:
+                        with open(path, "w", encoding="utf-8") as f:
+                            f.write("\n".join(lines))
+                    else:
+                        # Fallback placeholder
+                        with open(path, "w", encoding="utf-8") as f:
+                            f.write("No answer provided (non-interactive mode).")
+                else:
+                    with open(path, "w", encoding="utf-8") as f:
+                        f.write("No answer provided (non-interactive mode).")
+        with open(path, "r", encoding="utf-8") as f:
+            content = f.read()
+    finally:
+        try:
+            os.unlink(path)
+        except Exception:
+            pass
+    return content
+
+
+def capture_answer(minutes: int) -> str:
+    console.print(f"You have [bold]{minutes} minutes[/bold]. The test will start when you press Enter.")
+    # Use safe_input instead of input()
+    _ = safe_input("Press Enter to start the timer...")
+    console.print("Timer started. Write your answer in your editor. Save and exit when finished.")
+    start = time.time()
+    end = start + minutes * 60
+    console.print(f"Suggested end time: {time.ctime(end)}")
+    answer = open_in_editor("# Start writing your answer below\n\n")
+    elapsed = time.time() - start
+    console.print(f"You spent {int(elapsed // 60)} minutes and {int(elapsed % 60)} seconds writing.")
+    return answer
+
+
+def build_grading_payload(subject: str, paper: str, rubric_key: str, student_answer: str, topic: str) -> Tuple[str, str, int]:
+    rubric = RUBRICS.get(rubric_key, {})
+    description = rubric.get("description", "IB-style assessment")
+    markbands = rubric.get("markbands", [])
+
+    if markbands:
+        max_score = max(h for (_, h, _) in markbands)
+    else:
+        max_score = 25
+
+    markband_text = "\n".join([f"{low}-{high}: {desc}" for (low, high, desc) in markbands])
+
+    system_prompt = (
+        "You are an experienced IB examiner. Grade the student's response using the rubric below. "
+        "Your sole output MUST be a JSON object that strictly adheres to the schema: "
+        "{score: int, max_score: int, band: string, strengths: [..], weaknesses: [..], feedback: string}. "
+        "Be concise and actionable."
+    )
+
+    user_prompt = f"""Subject: {subject}
+Level/Paper: {paper}
+Topic: {topic}
+{description}
+Rubric bands:
+{markband_text}
+
+Student answer:
+{student_answer}
+
+Please produce the JSON described above."""
+
+    return system_prompt, user_prompt, max_score
+
+
+def call_openai_grade(system_prompt: str, user_prompt: str, max_score: int = 25) -> dict:
+    api_key = os.environ.get("OPENAI_API_KEY")
+    default_response = {
+        "score": None,
+        "max_score": max_score,
+        "band": None,
+        "strengths": [],
+        "weaknesses": [],
+        "feedback": ""
+    }
+
+    if not OPENAI_INSTALLED or openai is None:
+        console.print("[bold red]openai library not installed. Skipping AI grading.[/bold red]")
+        default_response["feedback"] = "OpenAI library not installed. To enable AI grading install the OpenAI Python package and set OPENAI_API_KEY."
+        return default_response
+
+    if not api_key:
+        console.print("[bold red]OPENAI_API_KEY not set. Skipping AI grading.[/bold red]")
+        default_response["feedback"] = "OPENAI_API_KEY not set. Set the environment variable to enable AI grading."
+        return default_response
+
+    # Try to be compatible with various openai client versions
+    try:
+        if hasattr(openai, "OpenAI"):
+            client = openai.OpenAI(api_key=api_key)
+            try:
+                response = client.chat.completions.create(
+                    model=os.environ.get("MODEL_OVERRIDE", "gpt-4o-mini"),
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    temperature=0.0,
+                    max_tokens=600
+                )
+                text = None
+                if hasattr(response, 'choices') and len(response.choices) > 0:
+                    ch = response.choices[0]
+                    msg = getattr(ch, 'message', None)
+                    if msg is not None:
+                        text = getattr(msg, 'content', None)
+                    if text is None:
+                        try:
+                            text = ch['message']['content']
+                        except Exception:
+                            pass
+                if text is None:
+                    text = str(response)
+            except Exception:
+                raise
+        elif hasattr(openai, 'ChatCompletion') and hasattr(openai.ChatCompletion, 'create'):
+            response = openai.ChatCompletion.create(
+                model=os.environ.get("MODEL_OVERRIDE", "gpt-4o-mini"),
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                temperature=0.0,
+                max_tokens=600
+            )
+            text = response["choices"][0]["message"]["content"].strip()
+        elif hasattr(openai, 'Completion') and hasattr(openai.Completion, 'create'):
+            response = openai.Completion.create(
+                model=os.environ.get("MODEL_OVERRIDE", "gpt-4o-mini"),
+                prompt=system_prompt + "\n" + user_prompt,
+                temperature=0.0,
+                max_tokens=600
+            )
+            text = response["choices"][0]["text"].strip()
+        else:
+            default_response["feedback"] = "OpenAI client version unsupported."
+            return default_response
+
+        try:
+            parsed = json.loads(text)
+            return parsed
+        except Exception:
+            console.print("[bold yellow]Warning: AI did not return valid JSON.[/bold yellow]")
+            default_response["feedback"] = f"AI did not return valid JSON. Raw output: {text[:500]}..."
+            return default_response
+
+    except Exception as e:
+        console.print(f"[bold red]OpenAI API Error: {e}[/bold red]")
+        default_response["feedback"] = f"OpenAI error: {e}"
+        return default_response
+
+# ---------- Interactive runner ----------
+
+def run_interactive():
+    console.print("[bold green]IB Mock Exam Tool[/bold green] - Create exams and (optionally) grade with AI")
+    subject = choose(["English A: Language & Literature", "Global Politics"]) 
+    level = choose(["SL", "HL"]) 
+    topic = prompt_ask("Enter the topic or text (e.g. Persepolis)")
+    paper = choose(["Paper 1", "Paper 2"]) 
+
+    console.print("Generating prompt...")
+    prompt_text, minutes = generate_prompt(subject, level, topic, paper)
+
+    console.rule("Exam Brief")
+    console.print(f"[bold]Subject:[/bold] {subject}")
+    console.print(f"[bold]Level:[/bold] {level}")
+    console.print(f"[bold]Paper:[/bold] {paper}")
+    console.print(f"[bold]Time allowed:[/bold] {minutes} minutes")
+    console.print("\n[bold]Question / Task:[/bold]\n")
+    console.print(prompt_text)
+
+    answer = capture_answer(minutes)
+
+    console.rule("AI Grading")
+    subj_key = "English" if subject.lower().startswith("english") else "Global_Politics"
+    rubric_suffix = "Paper1" if paper.endswith("1") else "Paper2"
+    rubric_key = f"{subj_key}_{rubric_suffix}"
+
+    system_prompt, user_prompt, max_score = build_grading_payload(subject, f"{level} {paper}", rubric_key, answer, topic)
+
+    console.print("Sending to AI grader... (requires OPENAI_API_KEY and openai package)")
+    grade = call_openai_grade(system_prompt, user_prompt, max_score=max_score)
+
+    console.print("[bold]Grade result:[/bold]")
+    console.print(json.dumps(grade, indent=2))
+
+    safe_subject = subject.replace(' ', '_').replace(':', '')
+    safe_paper = paper.replace(' ', '')
+    outname = f"mock_{safe_subject}_{level}_{safe_paper}_{int(time.time())}.md"
+    with open(outname, "w", encoding="utf-8") as f:
+        f.write("# Mock Exam Response\n\n")
+        f.write(f"Subject: {subject}\nLevel: {level}\nPaper: {paper}\nTopic: {topic}\n\n")
+        f.write("## Question\n")
+        f.write(prompt_text + "\n\n")
+        f.write("## Student Answer\n")
+        f.write(answer + "\n\n")
+        f.write("## AI Grader Output\n")
+        f.write(json.dumps(grade, indent=2))
+
+    console.print(f"Saved response + feedback to [bold]{outname}[/bold]")
+    console.print("Done. Use the saved file to revise and try again.")
+
+# ---------- Tests ----------
+
+def _run_tests():
+    console.print("Running lightweight built-in tests...")
+
+    # Test 1: generate_prompt returns text and minutes
+    p_text, p_minutes = generate_prompt("English A: Language & Literature", "SL", "Persepolis", "Paper 1")
+    assert isinstance(p_text, str) and len(p_text) > 0
+    assert isinstance(p_minutes, int) and p_minutes > 0
+
+    # Test 2: max_score calculation correctness (existing test preserved)
+    for key, r in RUBRICS.items():
+        markbands = r.get('markbands', [])
+        if markbands:
+            computed = max(h for (_, h, _) in markbands)
+            assert computed > 0
+
+    # Additional Test 3: build_grading_payload returns non-empty prompts and a correct max_score
+    for key in RUBRICS.keys():
+        sp, up, ms = build_grading_payload("English A", "SL Paper 1", key, "Answer", "Topic")
+        assert isinstance(sp, str) and len(sp) > 0
+        assert isinstance(up, str) and len(up) > 0
+        assert isinstance(ms, int) and ms > 0
+
+    # Additional Test 4: module detection booleans are booleans
+    assert isinstance(OPENAI_INSTALLED, bool)
+    assert isinstance(RICH_INSTALLED, bool)
+    assert isinstance(MARKDOWN_IT_INSTALLED, bool)
+    assert isinstance(TYPER_INSTALLED, bool)
+    assert isinstance(TYPER_SAFE_TO_USE, bool)
+
+    # Additional Test 5: safe_input uses IBMOCK_INPUTS env queue
+    # Ensure fresh queue
+    global _INPUT_QUEUE
+    _INPUT_QUEUE = None
+    os.environ["IBMOCK_INPUTS"] = "alpha\nbeta\n"
+    _init_input_queue()
+    a = safe_input()
+    b = safe_input()
+    assert a == "alpha"
+    assert b == "beta"
+    # cleanup
+    try:
+        del os.environ["IBMOCK_INPUTS"]
+    except Exception:
+        pass
+    _INPUT_QUEUE = None
+
+    console.print("All tests passed.")
+
+# ---------- Entry point: run tests automatically in non-interactive environments ----------
+
+def _dispatch_cli():
+    # If explicitly asked to run tests, do so
+    if len(sys.argv) > 1 and sys.argv[1] in ("test", "--run-tests", "--test"):
+        _run_tests()
+        return
+
+    # If there is no TTY on stdin, avoid entering interactive mode; run tests instead
+    if not sys.stdin or not sys.stdin.isatty():
+        console.print("No interactive terminal detected — running built-in tests instead of interactive mode.")
+        _run_tests()
+        return
+
+    # Otherwise, run interactive CLI
+    run_interactive()
+
+if __name__ == '__main__':
+    _dispatch_cli()
