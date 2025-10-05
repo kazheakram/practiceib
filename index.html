@@ -40,7 +40,15 @@
         /* Use pre-wrap to respect line breaks from the LLM output but allow wrapping */
         .preserve-whitespace {
             white-space: pre-wrap; 
-            /* Allow the LLM's raw HTML bolding to render correctly */
+        }
+
+        /* Modal specific styles */
+        .modal {
+            transition: opacity 0.3s ease-out, transform 0.3s ease-out;
+        }
+        .modal-hidden {
+            opacity: 0;
+            transform: scale(0.95);
         }
     </style>
 </head>
@@ -49,64 +57,33 @@
     <div id="app" class="flex-grow flex flex-col items-center p-4 sm:p-8">
         <!-- Application Content will be rendered here -->
     </div>
+    
+    <!-- API Key Configuration Modal (Hidden by default) -->
+    <div id="apiKeyModal" class="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50 modal modal-hidden" onclick="closeKeyModalOutside(event)">
+        <div class="bg-white p-6 sm:p-8 rounded-xl shadow-2xl w-full max-w-lg mx-4" onclick="event.stopPropagation()">
+            <h3 class="text-2xl font-bold mb-4 ib-blue-text border-b pb-2">Gemini API Key Setup</h3>
+            <p class="text-gray-700 mb-4">
+                To run the AI Grader, you must provide a **Gemini API Key**. This key is saved securely in your browser's local storage and is never sent anywhere else.
+            </p>
+            <div class="mb-4">
+                <label for="apiKeyInput" class="block text-sm font-medium text-gray-700 mb-2">Your Gemini API Key:</label>
+                <input type="password" id="apiKeyInput" value="" placeholder="Enter your key here (sk-...)" class="w-full p-3 border-2 border-gray-300 rounded-lg focus:ring-ib-blue-border focus:border-ib-blue-border text-base shadow-sm">
+            </div>
+            <div class="flex justify-end space-x-3">
+                <button onclick="saveApiKey()" class="ib-blue text-white py-2 px-4 rounded-lg font-semibold transition duration-300 hover:bg-blue-800 shadow-md">
+                    Save Key & Continue
+                </button>
+            </div>
+            <p class="text-xs text-gray-500 mt-4 text-center">
+                Get your key from Google AI Studio.
+            </p>
+        </div>
+    </div>
 
-    <!-- Firebase SDKs -->
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+    <!-- Application Logic and State Management (No Firebase/Firestore) -->
+    <script>
         
-        // Log level for Firebase/Firestore debugging
-        setLogLevel('Debug');
-
-        // Global variables provided by the environment
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-ib-app-id';
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-
-        let app, db, auth;
-        let currentUserId = null;
-
-        // --- Firebase Initialization and Authentication ---
-        if (Object.keys(firebaseConfig).length > 0) {
-            try {
-                app = initializeApp(firebaseConfig);
-                db = getFirestore(app);
-                auth = getAuth(app);
-
-                // Sign in with custom token or anonymously
-                const signInUser = async () => {
-                    if (initialAuthToken) {
-                        await signInWithCustomToken(auth, initialAuthToken);
-                    } else {
-                        await signInAnonymously(auth);
-                    }
-                };
-                
-                onAuthStateChanged(auth, (user) => {
-                    if (user) {
-                        currentUserId = user.uid;
-                        // Example: Create a user profile document if it doesn't exist
-                        const userRef = doc(db, "artifacts", appId, "users", currentUserId, "profile", "data");
-                        setDoc(userRef, { lastLogin: new Date().toISOString() }, { merge: true })
-                            .catch(err => console.error("Firestore user profile error:", err));
-                    } else {
-                        currentUserId = crypto.randomUUID(); // Fallback ID if auth fails
-                    }
-                    console.log("Firebase Auth Ready. User ID:", currentUserId);
-                });
-
-                signInUser().catch(err => console.error("Firebase Auth Error:", err));
-
-            } catch (error) {
-                console.error("Firebase Initialization Error:", error);
-            }
-        } else {
-            console.warn("Firebase config not available. Running without persistence/auth.");
-        }
-
-
-        // --- Application Logic and State Management ---
+        const API_KEY_STORAGE_KEY = 'geminiApiKey';
 
         const SUBJECT_CONFIG = {
             'english': {
@@ -154,14 +131,8 @@
             gradingResult: null,
             isApiLoading: false,
             apiError: null,
-            
-            // NEW FIELDS for API Key Management
-            customApiKey: '', // Key provided by user
-            showApiKeyConfig: false, // Hide config since key is provided
+            apiKey: localStorage.getItem(API_KEY_STORAGE_KEY) || "", // Load key from local storage
         };
-
-
-        // The API_URL is now constructed dynamically in callGeminiApi using customApiKey
 
         
         // --- GRADING SCHEMA (Mandatory Structured Output) ---
@@ -169,7 +140,6 @@
             type: "OBJECT",
             properties: {
                 totalMarksAchieved: { type: "INTEGER", description: "The total marks achieved across all criteria." },
-                // NEW: Added ibGradeLevel
                 ibGradeLevel: { type: "INTEGER", description: "The final IB grade awarded on the 1-7 scale, based on the total raw mark achieved and quality." },
                 totalMarksPossible: { type: "INTEGER", description: "The total possible marks for the paper (20, 25, or 30)." },
                 overallGradeComment: { type: "STRING", description: "A one-paragraph summary of the candidate's performance, strengths, and weaknesses." },
@@ -191,13 +161,55 @@
             },
             propertyOrdering: [
                 "totalMarksAchieved",
-                "ibGradeLevel", // NEW ORDERING
+                "ibGradeLevel", 
                 "totalMarksPossible",
                 "overallGradeComment",
                 "criteriaBreakdown",
                 "suggestedImprovementEssay"
             ]
         };
+
+        // --- API Key Management ---
+
+        function openKeyModal() {
+            const modal = document.getElementById('apiKeyModal');
+            const input = document.getElementById('apiKeyInput');
+            
+            // Populate input with existing key if available
+            input.value = APP_STATE.apiKey; 
+            
+            // Display modal
+            modal.classList.remove('modal-hidden');
+        }
+
+        function closeKeyModal() {
+            const modal = document.getElementById('apiKeyModal');
+            modal.classList.add('modal-hidden');
+        }
+        
+        function closeKeyModalOutside(event) {
+            if (event.target.id === 'apiKeyModal') {
+                closeKeyModal();
+            }
+        }
+
+        function saveApiKey() {
+            const input = document.getElementById('apiKeyInput');
+            const key = input.value.trim();
+            
+            if (key) {
+                localStorage.setItem(API_KEY_STORAGE_KEY, key);
+                APP_STATE.apiKey = key;
+                closeKeyModal();
+            } else {
+                localStorage.removeItem(API_KEY_STORAGE_KEY);
+                APP_STATE.apiKey = "";
+                closeKeyModal();
+            }
+            // Re-render to update UI (e.g., API Key status in header)
+            render();
+        }
+
 
         // --- Core Functions ---
 
@@ -209,12 +221,21 @@
          * @returns {Promise<object>} The parsed API response object.
          */
         async function callGeminiApi(payload, responseMimeType = null, responseSchema = null) {
+            
+            // Determine the API Key to use
+            const apiKeyToUse = APP_STATE.apiKey;
+            
+            if (!apiKeyToUse || apiKeyToUse.length < 20) {
+                 APP_STATE.apiError = "Gemini API Key is missing or invalid. Please click 'Configure Key' to enter your key.";
+                 APP_STATE.isApiLoading = false;
+                 render();
+                 throw new Error("API Key is missing or invalid.");
+            }
+
             APP_STATE.isApiLoading = true;
             APP_STATE.apiError = null;
             render();
 
-            const apiKeyToUse = APP_STATE.customApiKey;
-            // Use the flash model for speed and cost-effectiveness
             const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKeyToUse}`;
 
             let finalPayload = { contents: payload.contents };
@@ -245,9 +266,10 @@
                         const errorBody = await response.json().catch(() => ({})); 
                         let apiErrorMessage = errorBody.error?.message || 'Unknown server error (check console for details).';
                         
-                        if (response.status === 401) {
-                            apiErrorMessage = "Authentication failed (Status 401). Please check that your Gemini API key is correct and valid. If the key field is empty, the platform is failing to inject the required key.";
-                            APP_STATE.showApiKeyConfig = true; // Show config card again if 401 occurs
+                        if (response.status === 401 || response.status === 403) {
+                            apiErrorMessage = `Authentication failed (Status ${response.status}). Check your Gemini API key, billing status, and model access.`;
+                        } else if (response.status === 400 && apiErrorMessage.includes("API key not valid")) {
+                            apiErrorMessage = "The provided API key is invalid. Please re-enter it correctly via 'Configure Key'.";
                         }
                         
                         throw new Error(`API returned status ${response.status}: ${apiErrorMessage}`);
@@ -378,7 +400,6 @@
                     APP_STATE.examDuration = configTime || 90 * 60; // Fallback
                     APP_STATE.timeRemaining = APP_STATE.examDuration;
                     
-                    // --- CHANGED: Transition to preview step instead of running exam ---
                     APP_STATE.step = 'EXAM_PREVIEW'; 
                 } else {
                     APP_STATE.apiError = 'AI failed to generate a valid exam prompt.';
@@ -400,7 +421,7 @@
                 return;
             }
 
-            // --- TRIPLE CHECKED MAX MARKS CALCULATION ---
+            // --- MAX MARKS CALCULATION ---
             let maxMarks;
             let rubric = SUBJECT_CONFIG[subject].rubric;
             if (subject === 'english') {
@@ -417,7 +438,7 @@
             const rubricText = rubric.map(c => `* ${c.name} (Max ${c.max} marks)`).join('\n');
             
 
-            // --- VERIFIED SYSTEM PROMPT (Updated for 1-7 grade and relevance) ---
+            // --- SYSTEM PROMPT ---
             const systemPrompt = `You are an expert IB examiner. You will grade the candidate's essay against the official IB ${config.name} ${level.toUpperCase()} Paper ${paper} rubric.
             
             The specific rubric criteria you must use are:
@@ -458,7 +479,6 @@
             render();
             
             try {
-                // CRITICAL: Ensure correct parameters for structured output are passed
                 const response = await callGeminiApi(payload, "application/json", GRADING_SCHEMA);
                 const jsonText = response.candidates?.[0]?.content?.parts?.[0]?.text;
                 
@@ -495,7 +515,6 @@
             if (timerDisplay && timerCard) {
                 const isFinished = APP_STATE.timeRemaining <= 0;
                 const timerColorClass = APP_STATE.timeRemaining < 300 ? 'text-red-300' : 'text-white'; // Red for last 5 mins
-                const timerBgClass = APP_STATE.timeRemaining < 300 ? 'bg-red-700 shadow-xl' : 'timer-card shadow-xl';
                 
                 timerDisplay.textContent = isFinished ? 'TIME UP!' : `${formatTime(APP_STATE.timeRemaining)}`;
                 
@@ -544,61 +563,29 @@
         // --- UI Rendering Functions ---
 
         /**
-         * Renders the API Key Configuration card.
-         */
-        function renderApiKeyConfigCard() {
-            return `
-                <div class="w-full max-w-5xl mx-auto p-6 bg-yellow-50 border border-yellow-300 rounded-xl shadow-md mb-6 transition-all duration-300">
-                    <h3 class="text-xl font-bold text-yellow-800 mb-3 flex items-center">
-                        <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm-1-8V7a1 1 0 112 0v3a1 1 0 11-2 0zm0 4a1 1 0 100 2 1 1 0 000-2z" clip-rule="evenodd"></path></svg>
-                        API Key Configuration (Required for AI Grading)
-                    </h3>
-                    <p class="text-sm text-yellow-700 mb-4">
-                        If you receive a **401 Authentication Error**, your environment is not providing the key. Please generate and enter your Gemini API key below.
-                    </p>
-                    
-                    <label for="customApiKeyInput" class="block text-sm font-medium text-yellow-800 mb-2">Enter Gemini API Key:</label>
-                    <input type="password" id="customApiKeyInput" value="${APP_STATE.customApiKey}" 
-                        placeholder="AIzaSy... (Your key starts with AIzaSy)" 
-                        class="w-full p-3 border-2 border-yellow-400 rounded-lg focus:ring-yellow-500 focus:border-yellow-500 mb-4 text-base shadow-sm bg-white"
-                        oninput="APP_STATE.customApiKey=this.value; updateApiKeyStatus()"
-                    >
-                    
-                    <div class="flex flex-col sm:flex-row justify-between items-center sm:space-x-4">
-                        <button onclick="handleApiKeySubmit()" class="w-full sm:w-auto px-4 py-2 bg-yellow-600 text-white font-semibold rounded-lg hover:bg-yellow-700 transition duration-300 shadow-md mb-3 sm:mb-0">
-                            Save Key & Continue
-                        </button>
-                        <button onclick="APP_STATE.showApiKeyConfig=false; render()" class="text-sm text-yellow-700 hover:text-yellow-900 underline">
-                            Dismiss (I have a working key)
-                        </button>
-                    </div>
-                    <p id="apiKeyStatus" class="mt-3 text-sm font-medium ${APP_STATE.customApiKey ? 'text-green-700' : 'text-red-700'}">
-                        Current Status: ${APP_STATE.customApiKey ? 'Key Entered' : 'Using Environment Key'}
-                    </p>
-                </div>
-            `;
-        }
-
-        /**
          * The main rendering function that updates the entire application based on APP_STATE.
          */
         function render() {
             const appDiv = document.getElementById('app');
             let content = '';
             
-            // Shared components (Redesigned Header for Professional Look)
+            // Determine key status for header display
+            const isKeyConfigured = APP_STATE.apiKey && APP_STATE.apiKey.length > 20;
+
+            // Shared components (Header updated to include API Key status/config button)
             const header = `
                 <header class="w-full max-w-5xl mx-auto py-4 px-6 bg-white rounded-t-xl border-b-4 border-ib-blue-border shadow-md">
                     <div class="flex justify-between items-center">
-                        <h1 class="text-2xl font-bold tracking-tight text-gray-900">
+                        <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-gray-900">
                             <span class="ib-blue-text">IB Mock Exam Grader</span>
                         </h1>
-                        <div class="text-right">
-                            <p class="text-sm font-semibold text-gray-600">User ID</p>
-                            <p class="text-xs text-gray-400 truncate w-32">${currentUserId || 'Authenticating...'}</p>
-                        </div>
+                        <!-- Button now uses ID for programmatic event listener -->
+                        <button id="configKeyButton" class="flex items-center text-sm font-semibold p-2 rounded-full transition duration-300 ${isKeyConfigured ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-red-100 text-red-700 hover:bg-red-200'}" title="Configure Gemini API Key">
+                            <svg class="w-5 h-5 mr-1" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" d="M18 8a6 6 0 01-7.743 5.743L10 14h-.01l-.743-.257A6 6 0 012 8c0-.663.078-1.309.227-1.936l-.888-.888a1 1 0 111.414-1.414l.888.888A7.96 7.96 0 0010 0a8 8 0 00-7.96 8c0 1.258.337 2.44 1.144 3.473L3.707 13H3a1 1 0 000 2h3a1 1 0 001-1v-3.793l3.646-3.647a1 1 0 011.414 0l3.647 3.647V14a1 1 0 001 1h3a1 1 0 000-2h-.707l-2.293-2.293A6 6 0 0118 8zm-8 1a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd"></path></svg>
+                            ${isKeyConfigured ? 'Key Configured' : 'Configure Key'}
+                        </button>
                     </div>
-                    <p class="text-center text-sm opacity-70 text-gray-500 mt-2">Simulate Test Conditions & Receive AI-Powered IB Rubric Grading</p>
+                    <p class="text-center sm:text-left text-sm opacity-70 text-gray-500 mt-2">Simulate Test Conditions & Receive AI-Powered IB Rubric Grading</p>
                 </header>
             `;
 
@@ -620,8 +607,6 @@
                 </div>
             ` : '';
 
-            const apiKeyConfig = APP_STATE.showApiKeyConfig ? renderApiKeyConfigCard() : '';
-
             // Step-specific content
             if (APP_STATE.step === 'SUBJECT_SELECT') {
                 content = renderSubjectSelect();
@@ -631,7 +616,7 @@
                 content = renderTopicInput();
             } else if (APP_STATE.step === 'PAPER_SELECT') {
                 content = renderPaperSelect();
-            } else if (APP_STATE.step === 'EXAM_PREVIEW') { // New step
+            } else if (APP_STATE.step === 'EXAM_PREVIEW') { 
                 content = renderExamPreview();
             } else if (APP_STATE.step === 'EXAM_RUNNING') {
                 content = renderExamRunning();
@@ -641,7 +626,7 @@
                 content = renderResults();
             }
 
-            appDiv.innerHTML = header + errorBox + apiKeyConfig + `<div class="w-full max-w-5xl mx-auto">${content}</div>` + loader;
+            appDiv.innerHTML = header + errorBox + `<div class="w-full max-w-5xl mx-auto">${content}</div>` + loader;
 
             // Start timer if in EXAM_RUNNING state, and ensure it's not already running
             if (APP_STATE.step === 'EXAM_RUNNING' && APP_STATE.intervalId === null) {
@@ -927,9 +912,8 @@
                     <!-- Criteria Breakdown -->
                     <div class="mb-10">
                         <h3 class="text-2xl font-bold mb-5 text-gray-800 border-b pb-3">Detailed Rubric Breakdown</h3>
-                        ${result.criteriaBreakdown.map(criterion => { // FIX: Iterate over array instead of object keys
-                            const critKey = criterion.criterionName; // FIX: Get name from property
-                            // Find the max score dynamically, defaulting to 5
+                        ${result.criteriaBreakdown.map(criterion => { 
+                            const critKey = criterion.criterionName; 
                             const max = config.rubric.find(r => critKey.includes(r.name.split(':')[0]))?.max || 5; 
                             const critColor = criterion.score / max >= 0.8 ? 'bg-green-100 text-green-700' : criterion.score / max >= 0.5 ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700';
                             return `
@@ -1008,12 +992,10 @@
             generateExamPrompt();
         }
         
-        // --- NEW FUNCTION: To start the timer and switch to the running state ---
         function handleStartExam() {
             APP_STATE.step = 'EXAM_RUNNING';
             render(); // Rerender will automatically call startTimer() if needed
         }
-        // -----------------------------------------------------------------------
         
         function handleSubmitAnswer() {
             // Stop the timer and save the final answer
@@ -1029,40 +1011,11 @@
             gradePaper();
         }
         
-        function handleApiKeySubmit() {
-            const input = document.getElementById('customApiKeyInput').value.trim();
-            if (input && !input.startsWith('AIza')) {
-                APP_STATE.apiError = "The key format looks incorrect. A valid Gemini API key usually starts with 'AIza'. Please double-check the key.";
-                render();
-                return;
-            }
-            APP_STATE.customApiKey = input;
-            APP_STATE.showApiKeyConfig = false;
-            APP_STATE.apiError = null; // Clear previous error
-            render();
-        }
-
-        // Helper to update status message without full re-render
-        function updateApiKeyStatus() {
-            const input = document.getElementById('customApiKeyInput').value.trim();
-            const statusEl = document.getElementById('apiKeyStatus');
-            if (statusEl) {
-                if (input) {
-                    statusEl.className = 'mt-3 text-sm font-medium text-green-700';
-                    statusEl.textContent = 'Current Status: Key Entered';
-                } else {
-                    statusEl.className = 'mt-3 text-sm font-medium text-red-700';
-                    statusEl.textContent = 'Current Status: Using Environment Key';
-                }
-            }
-            // Update state to track the change
-            APP_STATE.customApiKey = input;
-        }
-
         function resetApp() {
             if (APP_STATE.intervalId) clearInterval(APP_STATE.intervalId);
             APP_STATE.intervalId = null;
 
+            // Preserve the API Key across resets
             Object.assign(APP_STATE, {
                 step: 'SUBJECT_SELECT',
                 subject: null,
@@ -1075,7 +1028,6 @@
                 gradingResult: null,
                 isApiLoading: false,
                 apiError: null,
-                showApiKeyConfig: false, // Keep config hidden if a key is already set
             });
             render();
         }
@@ -1085,16 +1037,25 @@
         window.handleLevelSelect = handleLevelSelect;
         window.handleTopicInput = handleTopicInput;
         window.handlePaperSelect = handlePaperSelect;
-        window.handleStartExam = handleStartExam; // Expose new function
+        window.handleStartExam = handleStartExam; 
         window.handleSubmitAnswer = handleSubmitAnswer;
         window.handleAnswerInput = handleAnswerInput; 
         window.resetApp = resetApp;
         window.render = render; 
-        window.handleApiKeySubmit = handleApiKeySubmit; 
-        window.updateApiKeyStatus = updateApiKeyStatus; 
         
-        // Initial render
-        document.addEventListener('DOMContentLoaded', render);
+        window.openKeyModal = openKeyModal;
+        window.closeKeyModalOutside = closeKeyModalOutside;
+        window.saveApiKey = saveApiKey;
+        
+        // Initial render and programmatic event attachment
+        document.addEventListener('DOMContentLoaded', () => {
+            render();
+            // Attach programmatic listener for robustness
+            const configButton = document.getElementById('configKeyButton');
+            if (configButton) {
+                configButton.addEventListener('click', openKeyModal);
+            }
+        });
 
     </script>
 </body>
