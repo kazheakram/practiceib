@@ -1,151 +1,1101 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>IB Mock Exam Tool</title>
-  <style>
-    body {
-      font-family: "Inter", sans-serif;
-      background-color: #fdf6f9;
-      color: #333;
-      text-align: center;
-      padding: 40px;
-    }
-    h1 {
-      color: #c278b3;
-      font-size: 2.2em;
-    }
-    select, button {
-      padding: 10px;
-      border-radius: 8px;
-      border: 1px solid #ccc;
-      margin: 10px;
-      font-size: 1em;
-    }
-    button {
-      background-color: #c278b3;
-      color: white;
-      border: none;
-      cursor: pointer;
-      transition: 0.2s;
-    }
-    button:hover {
-      background-color: #a85a97;
-    }
-    #output {
-      margin-top: 30px;
-      text-align: left;
-      background: white;
-      border-radius: 12px;
-      padding: 20px;
-      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
-      width: 70%;
-      margin-inline: auto;
-    }
-    .timer {
-      font-weight: bold;
-      color: #c278b3;
-    }
-  </style>
-</head>
-<body>
-  <h1>IB Mock Exam Tool</h1>
-
-  <label>Subject:</label>
-  <select id="subject">
-    <option value="">-- Choose Subject --</option>
-    <option value="english">English</option>
-    <option value="global_politics">Global Politics</option>
-  </select>
-
-  <label>Level:</label>
-  <select id="level">
-    <option value="">-- Choose Level --</option>
-    <option value="sl">SL</option>
-    <option value="hl">HL</option>
-  </select>
-
-  <label>Topic:</label>
-  <input id="topic" type="text" placeholder="e.g. Persepolis" />
-
-  <label>Paper:</label>
-  <select id="paper">
-    <option value="">-- Choose Paper --</option>
-    <option value="1">Paper 1</option>
-    <option value="2">Paper 2</option>
-  </select>
-
-  <br />
-  <button onclick="startMock()">Start Mock Exam</button>
-
-  <div id="output"></div>
-
-  <script>
-    function startMock() {
-      const subject = document.getElementById("subject").value;
-      const level = document.getElementById("level").value;
-      const topic = document.getElementById("topic").value.trim();
-      const paper = document.getElementById("paper").value;
-      const output = document.getElementById("output");
-
-      if (!subject || !level || !topic || !paper) {
-        alert("Please fill out all fields!");
-        return;
-      }
-
-      let examTime = paper === "1" ? 60 : 120;
-      let rubric = "";
-
-      if (subject === "english") {
-        rubric = `
-          <h3>English ${level.toUpperCase()} Paper ${paper}</h3>
-          <ul>
-            <li>Criterion A: Understanding and Interpretation (10 marks)</li>
-            <li>Criterion B: Analysis and Evaluation (10 marks)</li>
-            <li>Criterion C: Focus, Organization, and Development (5 marks)</li>
-            <li>Criterion D: Language (5 marks)</li>
-          </ul>
-        `;
-      } else {
-        rubric = `
-          <h3>Global Politics ${level.toUpperCase()} Paper ${paper}</h3>
-          <ul>
-            <li>Criterion A: Knowledge and Understanding (10 marks)</li>
-            <li>Criterion B: Application and Analysis (10 marks)</li>
-            <li>Criterion C: Synthesis and Evaluation (10 marks)</li>
-            <li>Criterion D: Use of Sources and Evidence (10 marks)</li>
-          </ul>
-        `;
-      }
-
-      output.innerHTML = `
-        <h2>Exam Started: ${subject.replace("_", " ")} - ${topic}</h2>
-        <p><span class="timer">Timer: ${examTime} minutes</span></p>
-        <p>Write your essay in a separate document or notes app. When finished, use the IB rubric below to self-assess.</p>
-        ${rubric}
-        <button onclick="endMock()">Finish Exam</button>
-      `;
-
-      let remaining = examTime * 60;
-      const timerInterval = setInterval(() => {
-        if (remaining <= 0) {
-          clearInterval(timerInterval);
-          endMock();
-        } else {
-          remaining--;
-          document.querySelector(".timer").textContent = "Timer: " + Math.floor(remaining/60) + "m " + (remaining%60) + "s";
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IB Mock Exam Grader</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Use Inter font -->
+    <style>
+        @import url('https://fonts.fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            /* Lighter, more professional background */
+            background-color: #f0f4f8; 
         }
-      }, 1000);
-    }
+        /* Official IB Blue - Primary */
+        .ib-blue { background-color: #0077c8; } 
+        .ib-blue-text { color: #0077c8; }
+        .ib-blue-border { border-color: #0077c8; }
+        /* IB Gold - Accent (Updated to be more prominent for the IB Grade 1-7) */
+        .ib-gold-text { color: #fcc917; } 
+        
+        /* Professional Card Shadow */
+        .card { 
+            box-shadow: 0 6px 15px rgba(0, 0, 0, 0.08), 0 2px 4px rgba(0, 0, 0, 0.05); 
+            transition: transform 0.2s ease-in-out;
+        }
 
-    function endMock() {
-      const output = document.getElementById("output");
-      output.innerHTML += `
-        <hr><h3>Exam Ended</h3>
-        <p>You can now compare your answer against the IB rubric above.</p>
-      `;
-    }
-  </script>
+        /* Ensure code and answer text areas use a clean font for readability */
+        #userAnswerArea {
+            font-family: 'Inter', sans-serif; 
+            resize: vertical; /* Allow resizing only vertically */
+        }
+        
+        /* Custom style for the timer card */
+        .timer-card {
+            background: linear-gradient(135deg, #0077c8 0%, #005a99 100%);
+        }
+        /* Custom style to preserve line breaks within a div for the prompt display */
+        /* Use pre-wrap to respect line breaks from the LLM output but allow wrapping */
+        .preserve-whitespace {
+            white-space: pre-wrap; 
+            /* Allow the LLM's raw HTML bolding to render correctly */
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+    <div id="app" class="flex-grow flex flex-col items-center p-4 sm:p-8">
+        <!-- Application Content will be rendered here -->
+    </div>
+
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        
+        // Log level for Firebase/Firestore debugging
+        setLogLevel('Debug');
+
+        // Global variables provided by the environment
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-ib-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        let app, db, auth;
+        let currentUserId = null;
+
+        // --- Firebase Initialization and Authentication ---
+        if (Object.keys(firebaseConfig).length > 0) {
+            try {
+                app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+
+                // Sign in with custom token or anonymously
+                const signInUser = async () => {
+                    if (initialAuthToken) {
+                        await signInWithCustomToken(auth, initialAuthToken);
+                    } else {
+                        await signInAnonymously(auth);
+                    }
+                };
+                
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        currentUserId = user.uid;
+                        // Example: Create a user profile document if it doesn't exist
+                        const userRef = doc(db, "artifacts", appId, "users", currentUserId, "profile", "data");
+                        setDoc(userRef, { lastLogin: new Date().toISOString() }, { merge: true })
+                            .catch(err => console.error("Firestore user profile error:", err));
+                    } else {
+                        currentUserId = crypto.randomUUID(); // Fallback ID if auth fails
+                    }
+                    console.log("Firebase Auth Ready. User ID:", currentUserId);
+                });
+
+                signInUser().catch(err => console.error("Firebase Auth Error:", err));
+
+            } catch (error) {
+                console.error("Firebase Initialization Error:", error);
+            }
+        } else {
+            console.warn("Firebase config not available. Running without persistence/auth.");
+        }
+
+
+        // --- Application Logic and State Management ---
+
+        const SUBJECT_CONFIG = {
+            'english': {
+                name: 'English A: Language & Literature',
+                rubric: [
+                    { name: 'Criterion A: Knowledge, Understanding and Interpretation', max: 5 },
+                    { name: 'Criterion B: Analysis and Evaluation', max: 5 },
+                    { name: 'Criterion C: Focus, Organization and Development', max: 5 },
+                    { name: 'Criterion D: Language', max: 5 }
+                ],
+                totalMarks: 20, // Sum of criteria max scores
+                paper1Time: 90 * 60, // 90 minutes
+                paper2Time: 90 * 60, // 90 minutes
+            },
+            'global_politics': {
+                name: 'Global Politics',
+                // This combined rubric covers P1/P2/P3 criteria for internal scoring
+                rubric: [ 
+                    { name: 'Criterion A: Knowledge and Understanding of Concepts and Theories', max: 5 },
+                    { name: 'Criterion B: Application, Analysis, and Synthesis', max: 5 },
+                    { name: 'Criterion C: Evaluation of Perspectives and Arguments', max: 5 },
+                    { name: 'Criterion D: Structure and Coherence of Argument', max: 5 },
+                    { name: 'Criterion E: Depth of Conceptual Understanding and Case Study Integration', max: 5 },
+                    { name: 'Criterion F: Clarity and Precision of Language', max: 5 }
+                ],
+                // We use 30 as the maximum for the highest paper type (P3 HL), but adjust dynamically in gradePaper
+                totalMarks: 30, 
+                paper1Time: 75 * 60, // 75 minutes
+                paper2Time: 105 * 60, // 105 minutes
+                paper3Time: 90 * 60, // 90 minutes (HL only)
+            }
+        };
+        
+        const APP_STATE = {
+            step: 'SUBJECT_SELECT', // SUBJECT_SELECT, LEVEL_SELECT, TOPIC_INPUT, PAPER_SELECT, EXAM_PREVIEW, EXAM_RUNNING, GRADING, RESULTS
+            subject: null,
+            level: null,
+            topic: '',
+            paper: null,
+            examPrompt: null,
+            examDuration: 0, // In seconds
+            timeRemaining: 0,
+            intervalId: null,
+            userAnswer: '',
+            gradingResult: null,
+            isApiLoading: false,
+            apiError: null,
+            
+            // NEW FIELDS for API Key Management
+            customApiKey: '', // Key provided by user
+            showApiKeyConfig: false, // Hide config since key is provided
+        };
+
+
+        // The API_URL is now constructed dynamically in callGeminiApi using customApiKey
+
+        
+        // --- GRADING SCHEMA (Mandatory Structured Output) ---
+        const GRADING_SCHEMA = {
+            type: "OBJECT",
+            properties: {
+                totalMarksAchieved: { type: "INTEGER", description: "The total marks achieved across all criteria." },
+                // NEW: Added ibGradeLevel
+                ibGradeLevel: { type: "INTEGER", description: "The final IB grade awarded on the 1-7 scale, based on the total raw mark achieved and quality." },
+                totalMarksPossible: { type: "INTEGER", description: "The total possible marks for the paper (20, 25, or 30)." },
+                overallGradeComment: { type: "STRING", description: "A one-paragraph summary of the candidate's performance, strengths, and weaknesses." },
+                criteriaBreakdown: {
+                    type: "ARRAY",
+                    description: "An array containing the detailed scores and comments for each grading criterion.",
+                    items: {
+                        type: "OBJECT",
+                        properties: {
+                            criterionName: { type: "STRING", description: "The full name of the grading criterion (e.g., Criterion A: Knowledge, Understanding and Interpretation)." },
+                            score: { type: "INTEGER", description: "The mark awarded for this specific criterion." },
+                            comment: { type: "STRING", description: "Specific feedback explaining the score for this criterion." },
+                            exemplaryExcerpt: { type: "STRING", description: "A short, direct quote from the student's answer (1-3 sentences max) that best exemplifies the reason for the given score." }
+                        },
+                        required: ["criterionName", "score", "comment", "exemplaryExcerpt"]
+                    }
+                },
+                suggestedImprovementEssay: { type: "STRING", description: "A detailed paragraph suggesting specific strategies for improving the essay." }
+            },
+            propertyOrdering: [
+                "totalMarksAchieved",
+                "ibGradeLevel", // NEW ORDERING
+                "totalMarksPossible",
+                "overallGradeComment",
+                "criteriaBreakdown",
+                "suggestedImprovementEssay"
+            ]
+        };
+
+        // --- Core Functions ---
+
+        /**
+         * Generic function to safely call the Gemini API with exponential backoff.
+         * @param {object} payload - The API request payload.
+         * @param {string} responseMimeType - Optional, for structured JSON output.
+         * @param {object} responseSchema - Optional, for structured JSON output.
+         * @returns {Promise<object>} The parsed API response object.
+         */
+        async function callGeminiApi(payload, responseMimeType = null, responseSchema = null) {
+            APP_STATE.isApiLoading = true;
+            APP_STATE.apiError = null;
+            render();
+
+            const apiKeyToUse = APP_STATE.customApiKey;
+            // Use the flash model for speed and cost-effectiveness
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKeyToUse}`;
+
+            let finalPayload = { contents: payload.contents };
+            if (payload.systemInstruction) {
+                finalPayload.systemInstruction = payload.systemInstruction;
+            }
+            if (payload.tools) {
+                finalPayload.tools = payload.tools;
+            }
+
+            if (responseMimeType && responseSchema) {
+                finalPayload.generationConfig = {
+                    responseMimeType: responseMimeType,
+                    responseSchema: responseSchema,
+                };
+            }
+
+            const maxRetries = 5;
+            for (let i = 0; i < maxRetries; i++) {
+                try {
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(finalPayload)
+                    });
+
+                    if (!response.ok) {
+                        const errorBody = await response.json().catch(() => ({})); 
+                        let apiErrorMessage = errorBody.error?.message || 'Unknown server error (check console for details).';
+                        
+                        if (response.status === 401) {
+                            apiErrorMessage = "Authentication failed (Status 401). Please check that your Gemini API key is correct and valid. If the key field is empty, the platform is failing to inject the required key.";
+                            APP_STATE.showApiKeyConfig = true; // Show config card again if 401 occurs
+                        }
+                        
+                        throw new Error(`API returned status ${response.status}: ${apiErrorMessage}`);
+                    }
+                    
+                    const text = await response.text();
+                    if (!text || text.trim() === "") {
+                        throw new Error("Received empty response body from API. The model may have failed to generate content.");
+                    }
+                    
+                    let result;
+                    try {
+                        result = JSON.parse(text);
+                    } catch (parseError) {
+                        console.error("Failed to parse API response JSON:", parseError, "Raw Text:", text);
+                        throw new Error(`Failed to parse API response JSON. Error: ${parseError.message}. Response start: ${text.substring(0, 50)}...`);
+                    }
+                    
+                    APP_STATE.isApiLoading = false;
+                    render();
+                    
+                    return result;
+
+                } catch (error) {
+                    let errorMessage = error.message;
+                    if (errorMessage.includes("Unknown name \"additionalProperties\"")) {
+                         errorMessage = "JSON Schema Error: The grading schema is using an unsupported property ('additionalProperties'). This is an internal application error. The code needs fixing.";
+                    }
+                    if (errorMessage.includes("Unexpected end of input") || errorMessage.includes("Failed to parse API response JSON")) {
+                         errorMessage = "The AI model returned an incomplete or malformed response. Please try again. This may happen due to prompt complexity.";
+                    }
+                    
+                    console.error(`Attempt ${i + 1} failed:`, errorMessage);
+                    if (i === maxRetries - 1) {
+                        APP_STATE.isApiLoading = false;
+                        APP_STATE.apiError = `Failed to connect or process after multiple retries: ${errorMessage.substring(0, 100)}...`;
+                        render();
+                        throw new Error(errorMessage); 
+                    }
+                    // Exponential backoff delay
+                    const delay = Math.pow(2, i) * 1000 + Math.random() * 1000;
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                }
+            }
+        }
+
+        /**
+         * Generates the mock exam prompt using the Gemini API.
+         */
+        async function generateExamPrompt() {
+            const { subject, level, topic, paper } = APP_STATE;
+            const config = SUBJECT_CONFIG[subject];
+            const subjectName = config.name;
+            const levelName = level.toUpperCase();
+            
+            // Instructing the LLM to use HTML <b> tags instead of Markdown ** for clean UI rendering
+            const systemPrompt = `You are a certified IB examiner for ${subjectName}. Your task is to generate a realistic, challenging, and specific mock exam question or stimulus material for a ${levelName} student. The question must be directly relevant to the user's specified topic: "${topic}". CRITICAL RULE: Output ONLY the requested exam prompt/sources and absolutely NO introductory phrases, greetings, or explanations. Use HTML <b> tags for all mandatory headings and use clear line breaks for formatting. Absolutely DO NOT use any markdown list syntax or special characters (such as -, *, or 1.) to format the sources, questions, or content. The output must be clean, professional textbook quality.`;
+
+            let userQuery = `Generate the full prompt for an IB ${subjectName} ${levelName} Paper ${paper} exam based on the text/topic "${topic}".`;
+            let tools = [];
+            
+            // Paper-specific instructions for structured output
+            if (subject === 'english' && paper === '1') {
+                userQuery += ` For Paper 1 (SL/HL), generate TWO unseen, contrasting non-literary or literary extracts. The entire response must strictly follow this structure: start with an HTML bold heading <b>Source A</b> followed by the full text of the first source. Then, include an HTML bold heading <b>Source B</b> followed by the full text of the second source. Finally, include an HTML bold heading <b>Question</b> followed by the specific comparative analysis question.`;
+            } else if (subject === 'english' && paper === '2') {
+                userQuery += ` For Paper 2, generate one essay question that requires the student to compare and contrast at least TWO works studied in class (one of which is specified as "${topic}"). The question must be broad enough to allow comparison with another work.`;
+            } 
+            
+            else if (subject === 'global_politics' && paper === '1') {
+                tools = [{ "google_search": {} }];
+                userQuery += ` For Global Politics Paper 1, generate a stimulus-based question set consisting of THREE distinct sources that address the contemporary political issue of "${topic}". The three sources MUST be:
+                
+                1. <b>Source 1</b>: A textual excerpt from a primary source (e.g., a speech, an article).
+                2. <b>Source 2 (Visual Source)</b>: A detailed, vivid description of a political cartoon or infographic that clearly represents a concept related to the topic. The description must be detailed enough to be analyzed as a visual text.
+                3. <b>Source 3</b>: A short secondary textual source from an academic or analytical report.
+                
+                The entire response must strictly follow this structure, using ONLY HTML <b> tags for headings and line breaks, with no list markers: 
+                
+                <b>Source 1</b>
+                [Source 1 Text]
+                
+                <b>Source 2</b>
+                [Detailed Visual Description]
+                
+                <b>Source 3</b>
+                [Source 3 Text]
+                
+                <b>Questions</b>
+                (a) [Question 1]
+                (b) [Question 2]
+                (c) [Question 3]
+                (d) [Question 4]
+                
+                Ensure the formatting is textbook quality with no bullet points or markdown list symbols whatsoever.`;
+            } else if (subject === 'global_politics' && paper === '2') {
+                userQuery += ` For Global Politics Paper 2, generate one essay question that is concept-driven and requires evaluation, applying knowledge to the issue/area of study related to "${topic}".`;
+            } else if (subject === 'global_politics' && paper === '3' && level === 'hl') {
+                 // Global Politics Paper 3 is HL only.
+                 userQuery += ` For Global Politics HL Paper 3, generate TWO distinct compulsory essay questions (30 marks total). These questions must be concept-driven, focus on the prescribed HL case study of "${topic}", and require the application of political concepts (like power, legitimacy, human rights) and deep evaluation/synthesis. The entire response must strictly follow this structure, using ONLY HTML <b> tags for headings and line breaks, with no list markers:
+    
+                <b>Prescribed Case Study</b>
+                [A brief, 2-3 sentence overview of the case study related to "${topic}"]
+                
+                <b>Question 1 (Compulsory)</b>
+                [First 15-mark essay question, e.g., 'Discuss the effectiveness...']
+                
+                <b>Question 2 (Compulsory)</b>
+                [Second 15-mark essay question, e.g., 'To what extent is the concept...']
+                
+                Ensure the questions are distinct and high-level.`;
+            }
+            
+            const payload = {
+                contents: [{ parts: [{ text: userQuery }] }],
+                systemInstruction: { parts: [{ text: systemPrompt }] },
+                tools: tools 
+            };
+            
+            try {
+                const response = await callGeminiApi(payload);
+                const generatedText = response.candidates?.[0]?.content?.parts?.[0]?.text;
+                
+                if (generatedText) {
+                    APP_STATE.examPrompt = generatedText;
+                    
+                    // Determine duration based on paper selection
+                    const configTime = config[`paper${paper}Time`];
+                    APP_STATE.examDuration = configTime || 90 * 60; // Fallback
+                    APP_STATE.timeRemaining = APP_STATE.examDuration;
+                    
+                    // --- CHANGED: Transition to preview step instead of running exam ---
+                    APP_STATE.step = 'EXAM_PREVIEW'; 
+                } else {
+                    APP_STATE.apiError = 'AI failed to generate a valid exam prompt.';
+                }
+            } catch (error) {
+                // Error already logged and state updated in callGeminiApi
+            }
+            render();
+        }
+
+        /**
+         * Grades the user's submitted answer using the Gemini API and a structured JSON output.
+         */
+        async function gradePaper() {
+            const { subject, level, paper, examPrompt, userAnswer } = APP_STATE;
+            if (!userAnswer.trim()) {
+                APP_STATE.apiError = "Please write an essay before submitting for grading.";
+                render();
+                return;
+            }
+
+            // --- TRIPLE CHECKED MAX MARKS CALCULATION ---
+            let maxMarks;
+            let rubric = SUBJECT_CONFIG[subject].rubric;
+            if (subject === 'english') {
+                maxMarks = 20; // 4 criteria * 5 marks
+            } else if (subject === 'global_politics' && paper === '3') {
+                maxMarks = 30; // 2 compulsory questions, often 15 marks each
+                rubric = rubric.filter(r => ['Criterion A', 'Criterion B', 'Criterion C', 'Criterion D', 'Criterion E', 'Criterion F'].includes(r.name.split(':')[0]));
+            } else { // GP Paper 1 or Paper 2
+                maxMarks = 25; // Often 5 criteria * 5 marks (or similar combination)
+                rubric = rubric.filter(r => ['Criterion A', 'Criterion B', 'Criterion C', 'Criterion D', 'Criterion E'].includes(r.name.split(':')[0]));
+            }
+            
+            const config = SUBJECT_CONFIG[subject];
+            const rubricText = rubric.map(c => `* ${c.name} (Max ${c.max} marks)`).join('\n');
+            
+
+            // --- VERIFIED SYSTEM PROMPT (Updated for 1-7 grade and relevance) ---
+            const systemPrompt = `You are an expert IB examiner. You will grade the candidate's essay against the official IB ${config.name} ${level.toUpperCase()} Paper ${paper} rubric.
+            
+            The specific rubric criteria you must use are:
+            ${rubricText}
+            The total possible marks for this specific paper (P${paper}) is ${maxMarks}.
+
+            CRITICAL: Based on the raw mark awarded (${maxMarks} total), you **MUST** determine the final overall IB grade on the official **1-7 scale** and provide it in the 'ibGradeLevel' field. Use typical, approximate IB grade boundaries for your conversion (e.g., 7 is typically 80%+, 6 is 70-79%, 5 is 60-69%, etc.).
+
+            CRITICAL: The feedback in 'overallGradeComment' and all 'criteriaBreakdown' comments MUST be **highly specific and relevant** to the concepts and arguments presented in the candidate's answer. For each criterion's breakdown, you **MUST** include an \`exemplaryExcerpt\`. This must be a single, short, direct quote from the candidate's answer (1-3 sentences max) that either demonstrates the quality that earned the score or, if the score is low, showcases the specific issue or lack of development, **showing the student exactly where their mark was gained or lost.**
+
+            CRITICAL: The criteria feedback MUST be returned as an array of objects within the 'criteriaBreakdown' field, where each object includes the 'criterionName' field matching the names listed above.
+
+            Your response MUST strictly adhere to the provided JSON schema. Provide NO text, explanation, or commentary outside of the requested JSON object. For each criterion, provide a score from 0 to its maximum and a detailed comment justifying the score, specifically referencing the quality of the argument, textual/conceptual support, structure, and language. Your overallGradeComment must be a concise, professional summary.`;
+
+            const userQuery = `
+            IB Exam Prompt:
+            ---
+            ${examPrompt}
+            ---
+
+            Candidate's Answer:
+            ---
+            ${userAnswer}
+            ---
+
+            Grade the candidate's answer based on the IB rubric provided.
+            `;
+
+            const payload = {
+                contents: [{ parts: [{ text: userQuery }] }],
+                systemInstruction: { parts: [{ text: systemPrompt }] }
+            };
+
+            // Stop the timer if it's running
+            if (APP_STATE.intervalId) clearInterval(APP_STATE.intervalId);
+
+            APP_STATE.step = 'GRADING';
+            render();
+            
+            try {
+                // CRITICAL: Ensure correct parameters for structured output are passed
+                const response = await callGeminiApi(payload, "application/json", GRADING_SCHEMA);
+                const jsonText = response.candidates?.[0]?.content?.parts?.[0]?.text;
+                
+                if (jsonText) {
+                    const result = JSON.parse(jsonText);
+                    APP_STATE.gradingResult = result;
+                    APP_STATE.step = 'RESULTS';
+                } else {
+                    APP_STATE.apiError = 'AI failed to return a valid JSON grading result.';
+                }
+            } catch (error) {
+                // Error already logged and state updated in callGeminiApi
+            }
+            render();
+        }
+
+        // --- Timer Functions ---
+
+        function formatTime(seconds) {
+            const h = Math.floor(seconds / 3600);
+            const m = Math.floor((seconds % 3600) / 60);
+            const s = seconds % 60;
+            const pad = (num) => String(num).padStart(2, '0');
+            return `${pad(h)}:${pad(m)}:${pad(s)}`;
+        }
+        
+        /**
+         * Function to update only the timer display and its styling (no full re-render)
+         */
+        function updateTimerDisplay() {
+            const timerDisplay = document.getElementById('timerDisplay');
+            const timerCard = document.getElementById('timerCard');
+
+            if (timerDisplay && timerCard) {
+                const isFinished = APP_STATE.timeRemaining <= 0;
+                const timerColorClass = APP_STATE.timeRemaining < 300 ? 'text-red-300' : 'text-white'; // Red for last 5 mins
+                const timerBgClass = APP_STATE.timeRemaining < 300 ? 'bg-red-700 shadow-xl' : 'timer-card shadow-xl';
+                
+                timerDisplay.textContent = isFinished ? 'TIME UP!' : `${formatTime(APP_STATE.timeRemaining)}`;
+                
+                // Update classes on timer card only if they are different
+                // Use a dedicated class for the default gradient background
+                if (!timerCard.classList.contains('timer-card') && !timerCard.classList.contains('bg-red-700')) {
+                    timerCard.classList.add('timer-card');
+                } else if (APP_STATE.timeRemaining < 300 && !timerCard.classList.contains('bg-red-700')) {
+                    timerCard.classList.remove('timer-card');
+                    timerCard.classList.add('bg-red-700');
+                } else if (APP_STATE.timeRemaining >= 300 && timerCard.classList.contains('bg-red-700')) {
+                    timerCard.classList.remove('bg-red-700');
+                    timerCard.classList.add('timer-card');
+                }
+
+                // Update text color
+                timerDisplay.className = `text-4xl font-extrabold transition-colors duration-500 ${timerColorClass}`;
+            }
+        }
+
+        function startTimer() {
+            if (APP_STATE.intervalId) clearInterval(APP_STATE.intervalId);
+            
+            APP_STATE.intervalId = setInterval(() => {
+                if (APP_STATE.timeRemaining > 0) {
+                    APP_STATE.timeRemaining--;
+                    updateTimerDisplay(); 
+                } else {
+                    clearInterval(APP_STATE.intervalId);
+                    APP_STATE.intervalId = null; // Clear ID
+                    
+                    // Stop timer and submit answer 5 seconds after time runs out
+                    const answerArea = document.getElementById('userAnswerArea');
+                    if (answerArea) {
+                        APP_STATE.userAnswer = answerArea.value;
+                    }
+                    
+                    APP_STATE.step = 'GRADING_INIT'; 
+                    render(); 
+                    
+                    setTimeout(gradePaper, 5000); 
+                }
+            }, 1000);
+        }
+
+        // --- UI Rendering Functions ---
+
+        /**
+         * Renders the API Key Configuration card.
+         */
+        function renderApiKeyConfigCard() {
+            return `
+                <div class="w-full max-w-5xl mx-auto p-6 bg-yellow-50 border border-yellow-300 rounded-xl shadow-md mb-6 transition-all duration-300">
+                    <h3 class="text-xl font-bold text-yellow-800 mb-3 flex items-center">
+                        <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm-1-8V7a1 1 0 112 0v3a1 1 0 11-2 0zm0 4a1 1 0 100 2 1 1 0 000-2z" clip-rule="evenodd"></path></svg>
+                        API Key Configuration (Required for AI Grading)
+                    </h3>
+                    <p class="text-sm text-yellow-700 mb-4">
+                        If you receive a **401 Authentication Error**, your environment is not providing the key. Please generate and enter your Gemini API key below.
+                    </p>
+                    
+                    <label for="customApiKeyInput" class="block text-sm font-medium text-yellow-800 mb-2">Enter Gemini API Key:</label>
+                    <input type="password" id="customApiKeyInput" value="${APP_STATE.customApiKey}" 
+                        placeholder="AIzaSy... (Your key starts with AIzaSy)" 
+                        class="w-full p-3 border-2 border-yellow-400 rounded-lg focus:ring-yellow-500 focus:border-yellow-500 mb-4 text-base shadow-sm bg-white"
+                        oninput="APP_STATE.customApiKey=this.value; updateApiKeyStatus()"
+                    >
+                    
+                    <div class="flex flex-col sm:flex-row justify-between items-center sm:space-x-4">
+                        <button onclick="handleApiKeySubmit()" class="w-full sm:w-auto px-4 py-2 bg-yellow-600 text-white font-semibold rounded-lg hover:bg-yellow-700 transition duration-300 shadow-md mb-3 sm:mb-0">
+                            Save Key & Continue
+                        </button>
+                        <button onclick="APP_STATE.showApiKeyConfig=false; render()" class="text-sm text-yellow-700 hover:text-yellow-900 underline">
+                            Dismiss (I have a working key)
+                        </button>
+                    </div>
+                    <p id="apiKeyStatus" class="mt-3 text-sm font-medium ${APP_STATE.customApiKey ? 'text-green-700' : 'text-red-700'}">
+                        Current Status: ${APP_STATE.customApiKey ? 'Key Entered' : 'Using Environment Key'}
+                    </p>
+                </div>
+            `;
+        }
+
+        /**
+         * The main rendering function that updates the entire application based on APP_STATE.
+         */
+        function render() {
+            const appDiv = document.getElementById('app');
+            let content = '';
+            
+            // Shared components (Redesigned Header for Professional Look)
+            const header = `
+                <header class="w-full max-w-5xl mx-auto py-4 px-6 bg-white rounded-t-xl border-b-4 border-ib-blue-border shadow-md">
+                    <div class="flex justify-between items-center">
+                        <h1 class="text-2xl font-bold tracking-tight text-gray-900">
+                            <span class="ib-blue-text">IB Mock Exam Grader</span>
+                        </h1>
+                        <div class="text-right">
+                            <p class="text-sm font-semibold text-gray-600">User ID</p>
+                            <p class="text-xs text-gray-400 truncate w-32">${currentUserId || 'Authenticating...'}</p>
+                        </div>
+                    </div>
+                    <p class="text-center text-sm opacity-70 text-gray-500 mt-2">Simulate Test Conditions & Receive AI-Powered IB Rubric Grading</p>
+                </header>
+            `;
+
+            const loader = APP_STATE.isApiLoading ? `
+                <div class="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50">
+                    <div class="bg-white p-10 rounded-xl shadow-2xl flex flex-col items-center card no-hover-effect">
+                        <div class="animate-spin rounded-full h-14 w-14 border-t-4 border-b-4 border-ib-blue-text mb-4"></div>
+                        <p class="text-xl font-bold text-gray-800">${APP_STATE.step === 'GRADING' ? 'Grading your assessment...' : 'Preparing Exam Prompt...'}</p>
+                        <p class="text-sm text-gray-500 mt-2">The AI Examiner is working hard. Please wait a moment.</p>
+                    </div>
+                </div>
+            ` : '';
+            
+            const errorBox = APP_STATE.apiError ? `
+                <div class="w-full max-w-5xl mx-auto p-4 mb-4 bg-red-50 border border-red-300 text-red-700 rounded-lg shadow-md" role="alert">
+                    <p class="font-bold flex items-center"><svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"></path></svg> API Error:</p>
+                    <p class="mt-1">${APP_STATE.apiError}</p>
+                    <button onclick="APP_STATE.apiError=null; render();" class="mt-2 text-sm font-semibold text-red-800 underline">Dismiss</button>
+                </div>
+            ` : '';
+
+            const apiKeyConfig = APP_STATE.showApiKeyConfig ? renderApiKeyConfigCard() : '';
+
+            // Step-specific content
+            if (APP_STATE.step === 'SUBJECT_SELECT') {
+                content = renderSubjectSelect();
+            } else if (APP_STATE.step === 'LEVEL_SELECT') {
+                content = renderLevelSelect();
+            } else if (APP_STATE.step === 'TOPIC_INPUT') {
+                content = renderTopicInput();
+            } else if (APP_STATE.step === 'PAPER_SELECT') {
+                content = renderPaperSelect();
+            } else if (APP_STATE.step === 'EXAM_PREVIEW') { // New step
+                content = renderExamPreview();
+            } else if (APP_STATE.step === 'EXAM_RUNNING') {
+                content = renderExamRunning();
+            } else if (APP_STATE.step === 'GRADING' || APP_STATE.step === 'GRADING_INIT') {
+                 content = renderGradingPlaceholder();
+            } else if (APP_STATE.step === 'RESULTS') {
+                content = renderResults();
+            }
+
+            appDiv.innerHTML = header + errorBox + apiKeyConfig + `<div class="w-full max-w-5xl mx-auto">${content}</div>` + loader;
+
+            // Start timer if in EXAM_RUNNING state, and ensure it's not already running
+            if (APP_STATE.step === 'EXAM_RUNNING' && APP_STATE.intervalId === null) {
+                startTimer();
+            }
+        }
+
+        // Helper components for each step
+
+        function renderSubjectSelect() {
+            return `
+                <div class="card bg-white p-8 rounded-xl shadow-lg mt-6">
+                    <h2 class="text-3xl font-bold mb-8 text-gray-800 border-b pb-3">1. Select Your Subject</h2>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                        ${Object.keys(SUBJECT_CONFIG).map(key => `
+                            <button onclick="handleSubjectSelect('${key}')" class="flex flex-col items-center justify-center p-8 border border-gray-200 rounded-xl transition duration-300 hover:bg-ib-blue/5 hover:border-ib-blue-border hover:shadow-xl group card">
+                                <span class="text-6xl mb-3">${key === 'english' ? '📖' : '🏛️'}</span>
+                                <span class="text-xl font-bold ib-blue-text group-hover:text-blue-700">${SUBJECT_CONFIG[key].name}</span>
+                                <span class="text-sm text-gray-500 mt-1">${key === 'english' ? 'Language & Literature' : 'Global Politics'}</span>
+                            </button>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderLevelSelect() {
+            return `
+                <div class="card bg-white p-8 rounded-xl shadow-lg mt-6">
+                    <h2 class="text-3xl font-bold mb-8 text-gray-800 border-b pb-3">2. Select Your Level (${SUBJECT_CONFIG[APP_STATE.subject].name})</h2>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                        ${['sl', 'hl'].map(level => `
+                            <button onclick="handleLevelSelect('${level}')" class="flex flex-col items-center justify-center p-8 border-4 rounded-xl transition duration-300 hover:bg-gray-100 hover:shadow-xl group card ${level === 'hl' ? 'border-red-400 hover:border-red-600' : 'border-green-400 hover:border-green-600'}">
+                                <span class="text-5xl font-extrabold group-hover:text-black">${level.toUpperCase()}</span>
+                                <span class="text-lg font-semibold text-gray-700 mt-2">(${level === 'hl' ? 'Higher Level' : 'Standard Level'})</span>
+                            </button>
+                        `).join('')}
+                    </div>
+                    <button onclick="APP_STATE.step='SUBJECT_SELECT'; render()" class="mt-8 text-sm font-medium text-gray-500 hover:text-ib-blue-text transition duration-300 flex items-center">
+                        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
+                        Back to Subject Selection
+                    </button>
+                </div>
+            `;
+        }
+
+        function renderTopicInput() {
+            return `
+                <div class="card bg-white p-8 rounded-xl shadow-lg mt-6">
+                    <h2 class="text-3xl font-bold mb-8 text-gray-800 border-b pb-3">3. Enter Your Study Topic</h2>
+                    <p class="text-gray-600 mb-6">Specify the core text or political issue you wish to be tested on. The AI will generate a prompt specific to this area.</p>
+                    
+                    <label for="topicInput" class="block text-sm font-medium text-gray-700 mb-2">Topic / Text / Issue:</label>
+                    <input type="text" id="topicInput" value="${APP_STATE.topic}" placeholder="e.g., The Handmaid's Tale, The role of NGOs in conflict" class="w-full p-4 border-2 border-gray-300 rounded-xl focus:ring-ib-blue-border focus:border-ib-blue-border mb-8 text-lg shadow-sm">
+                    
+                    <button onclick="handleTopicInput()" class="w-full ib-blue text-white py-4 rounded-xl font-semibold text-lg transition duration-300 hover:bg-blue-800 shadow-md hover:shadow-lg">
+                        Proceed to Paper Selection
+                    </button>
+                    <button onclick="APP_STATE.step='LEVEL_SELECT'; render()" class="mt-4 text-sm font-medium text-gray-500 hover:text-ib-blue-text transition duration-300 flex items-center">
+                        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
+                        Back to Level Selection
+                    </button>
+                </div>
+            `;
+        }
+
+        function renderPaperSelect() {
+            const subjectConfig = SUBJECT_CONFIG[APP_STATE.subject];
+            const isGP = APP_STATE.subject === 'global_politics';
+            const isHL = APP_STATE.level === 'hl';
+            
+            const paperData = [
+                { num: 1, title: 'Paper 1', subtitle: '(Unseen Text/Source Analysis)', time: formatTime(subjectConfig.paper1Time), available: true },
+                { num: 2, title: 'Paper 2', subtitle: '(Comparative/Concept Essay)', time: formatTime(subjectConfig.paper2Time), available: true }
+            ];
+            
+            if (isGP && isHL) {
+                paperData.push({ 
+                    num: 3, 
+                    title: 'Paper 3 (HL Only)', 
+                    subtitle: '(Prescribed Case Study Essay)', 
+                    time: formatTime(subjectConfig.paper3Time), 
+                    available: true 
+                });
+            }
+
+            return `
+                <div class="card bg-white p-8 rounded-xl shadow-lg mt-6">
+                    <h2 class="text-3xl font-bold mb-4 text-gray-800">4. Select Exam Paper</h2>
+                    <p class="text-lg font-medium text-gray-700 mb-6 border-b pb-3">Mock Exam: <span class="ib-blue-text font-bold">${subjectConfig.name} ${APP_STATE.level.toUpperCase()}</span> on topic: <span class="font-bold">${APP_STATE.topic}</span></p>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 ${isGP && isHL ? 'lg:grid-cols-3' : ''} gap-6">
+                        ${paperData.map(p => `
+                            <button onclick="handlePaperSelect('${p.num}')" class="p-6 border-2 border-gray-200 rounded-xl transition duration-300 hover:bg-ib-blue/5 hover:border-ib-blue-border hover:shadow-xl group card flex flex-col items-center text-center">
+                                <span class="text-3xl font-extrabold ib-blue-text">${p.title}</span>
+                                <span class="text-base text-gray-600 mt-1">${p.subtitle}</span>
+                                <span class="text-sm text-gray-400 mt-3">Duration: ${p.time}</span>
+                            </button>
+                        `).join('')}
+                    </div>
+                    <button onclick="APP_STATE.step='TOPIC_INPUT'; render()" class="mt-8 text-sm font-medium text-gray-500 hover:text-ib-blue-text transition duration-300 flex items-center">
+                        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
+                        Back to Topic Input
+                    </button>
+                </div>
+            `;
+        }
+
+        function renderExamPreview() {
+            const config = SUBJECT_CONFIG[APP_STATE.subject];
+            const time = formatTime(config[`paper${APP_STATE.paper}Time`]);
+
+            return `
+                <div class="w-full mt-6 mb-8">
+                    <!-- Title Bar (Placeholder for time/details) -->
+                    <div class="flex flex-col sm:flex-row justify-between items-center p-4 rounded-t-xl bg-gray-200 text-gray-800 shadow-md">
+                        <h2 class="text-xl sm:text-2xl font-bold tracking-tight mb-2 sm:mb-0">
+                            ${config.name} P${APP_STATE.paper} (${APP_STATE.level.toUpperCase()})
+                        </h2>
+                        <div class="text-center sm:text-right">
+                            <p class="text-sm font-medium opacity-80">Scheduled Duration</p>
+                            <p class="text-3xl font-extrabold text-gray-700">${time}</p>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-white p-6 sm:p-8 rounded-b-xl shadow-2xl">
+                        <!-- Exam Prompt Section -->
+                        <div class="mb-8 p-6 bg-gray-50 rounded-xl border border-gray-200">
+                            <h3 class="text-xl font-bold mb-3 ib-blue-text flex items-center border-b pb-2">
+                                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13h2a2 2 0 002-2V7a2 2 0 00-2-2h-3m-6 11a1 1 0 100 2 1 1 0 000-2zm12 0a1 1 0 100 2 1 1 0 000-2z"></path></svg>
+                                The Exam Prompt (Review Carefully before starting)
+                            </h3>
+                            <!-- Display content in a div to allow HTML <b> tags to render, while preserving line breaks -->
+                            <div 
+                                id="examPromptDisplay"
+                                class="w-full p-4 border border-gray-300 rounded-xl bg-gray-100 text-base text-gray-700 leading-relaxed shadow-inner overflow-auto max-h-96 preserve-whitespace"
+                            >
+                                ${APP_STATE.examPrompt}
+                            </div>
+                        </div>
+
+                        <!-- Start Exam Button -->
+                        <div class="mt-8">
+                            <button onclick="handleStartExam()" class="w-full py-5 rounded-xl font-extrabold text-2xl transition duration-300 ib-blue text-white hover:bg-blue-800 shadow-lg hover:shadow-xl flex items-center justify-center">
+                                <svg class="w-7 h-7 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.108a12.022 12.022 0 011.666 1.485v5.378a2 2 0 01-2 2h-2.585a2 2 0 00-1.415.585L12 21.033l-1.618-1.618a2 2 0 00-1.415-.585H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1"></path></svg>
+                                Start Timed Exam Now
+                            </button>
+                        </div>
+                        <p class="text-sm text-center text-red-600 mt-4 font-medium">Warning: The timer (${time}) will start immediately upon clicking this button and cannot be paused.</p>
+                        <button onclick="APP_STATE.step='PAPER_SELECT'; render()" class="mt-4 text-sm font-medium text-gray-500 hover:text-ib-blue-text transition duration-300 flex items-center mx-auto">
+                            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
+                            Back to Paper Selection
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function handleAnswerInput(value) {
+            // Update the state immediately when the user types, but DO NOT call render()
+            APP_STATE.userAnswer = value;
+        }
+
+        function renderExamRunning() {
+            const isFinished = APP_STATE.timeRemaining <= 0;
+            const timerColor = APP_STATE.timeRemaining < 300 ? 'text-red-300' : 'text-white'; // Red for last 5 mins
+            const timerBg = APP_STATE.timeRemaining < 300 ? 'bg-red-700 shadow-xl' : 'timer-card shadow-xl';
+
+            return `
+                <div class="w-full mt-6 mb-8">
+                    <!-- Timer and Title Bar -->
+                    <div id="timerCard" class="flex flex-col sm:flex-row justify-between items-center p-4 rounded-t-xl ${timerBg} text-white transition-all duration-500">
+                        <h2 class="text-xl sm:text-2xl font-bold tracking-tight mb-2 sm:mb-0">
+                            ${SUBJECT_CONFIG[APP_STATE.subject].name} P${APP_STATE.paper} (${APP_STATE.level.toUpperCase()})
+                        </h2>
+                        <div class="text-center sm:text-right">
+                            <p class="text-sm font-medium opacity-80">Exam Time Remaining</p>
+                            <p id="timerDisplay" class="text-4xl font-extrabold ${timerColor} transition-colors duration-500">
+                                ${isFinished ? 'TIME UP!' : `${formatTime(APP_STATE.timeRemaining)}`}
+                            </p>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-white p-6 sm:p-8 rounded-b-xl shadow-2xl">
+                        <!-- Exam Prompt Section -->
+                        <div class="mb-8 p-6 bg-gray-50 rounded-xl border border-gray-200">
+                            <h3 class="text-xl font-bold mb-3 ib-blue-text flex items-center border-b pb-2">
+                                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13h2a2 2 0 002-2V7a2 2 0 00-2-2h-3m-6 11a1 1 0 100 2 1 1 0 000-2zm12 0a1 1 0 100 2 1 1 0 000-2z"></path></svg>
+                                The Exam Prompt
+                            </h3>
+                            <!-- Display content in a div to allow HTML <b> tags to render, while preserving line breaks -->
+                            <div 
+                                id="examPromptDisplay"
+                                class="w-full p-4 border border-gray-300 rounded-xl bg-gray-100 text-base text-gray-700 leading-relaxed shadow-inner overflow-auto max-h-96 preserve-whitespace"
+                            >
+                                ${APP_STATE.examPrompt}
+                            </div>
+                        </div>
+
+                        <!-- Answer Area Section -->
+                        <div class="mt-8">
+                            <h3 class="text-xl font-bold mb-3 text-gray-800 flex items-center border-b pb-2">
+                                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                                Your Written Response
+                            </h3>
+                            <textarea 
+                                id="userAnswerArea" 
+                                rows="20" 
+                                class="w-full p-4 border-2 border-gray-300 rounded-xl focus:ring-ib-blue-border focus:border-ib-blue-border text-base shadow-inner transition duration-200" 
+                                placeholder="Start writing your high-quality essay response here. Pay attention to the structure, use of evidence/examples, and sophisticated language appropriate for the IB level."
+                                oninput="handleAnswerInput(this.value)"
+                            >${APP_STATE.userAnswer}</textarea>
+                        </div>
+                        
+                        <button onclick="handleSubmitAnswer()" ${isFinished ? 'disabled' : ''} class="mt-8 w-full py-4 rounded-xl font-semibold text-xl transition duration-300 ${isFinished ? 'bg-gray-400 cursor-not-allowed' : 'ib-blue text-white hover:bg-blue-800 shadow-lg hover:shadow-xl'}">
+                            ${isFinished ? 'Time Expired - Submitting' : 'Submit for Grading'}
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
+        
+        function renderGradingPlaceholder() {
+            return `
+                <div class="card bg-white p-12 rounded-xl shadow-lg mt-6 text-center no-hover-effect">
+                    <div class="animate-pulse">
+                        <svg class="w-16 h-16 mx-auto ib-blue-text mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.108a12.022 12.022 0 011.666 1.485v5.378a2 2 0 01-2 2h-2.585a2 2 0 00-1.415.585L12 21.033l-1.618-1.618a2 2 0 00-1.415-.585H5a2 2 0 01-2-2v-5.378a12.023 12.023 0 011.666-1.485m6.877 4.167a5.002 5.002 0 01-6.814-2.858 5.002 5.002 0 012.857-6.814 5.002 5.002 0 016.814 2.857 5.002 5.002 0 01-2.857 6.814z"></path></svg>
+                        <h2 class="text-3xl font-bold ib-blue-text mb-4">Grading in Progress...</h2>
+                        <p class="text-xl text-gray-600">The AI Examiner is meticulously applying the official IB Rubric to your response, focusing on conceptual clarity and analytical depth.</p>
+                    </div>
+                    <div class="mt-10 text-left max-w-md mx-auto p-4 bg-gray-100 rounded-lg">
+                        <p class="font-semibold text-gray-800 border-b pb-2 mb-2">Currently Reviewing Criteria:</p>
+                        <ul class="space-y-1 text-sm text-gray-600">
+                            ${SUBJECT_CONFIG[APP_STATE.subject].rubric.map(c => `<li class="flex items-center"><span class="ib-blue-text font-bold mr-2">•</span>${c.name} (Max ${c.max})</li>`).join('')}
+                        </ul>
+                    </div>
+                </div>
+            `;
+        }
+
+
+        function renderResults() {
+            const result = APP_STATE.gradingResult;
+            const config = SUBJECT_CONFIG[APP_STATE.subject];
+            
+            // --- VERIFIED MAX SCORE DISPLAY ---
+            let maxScore = result.totalMarksPossible || 20; // Default to 20 if property is missing for safety
+            
+            const achievedScore = result.totalMarksAchieved;
+            const ibGrade = result.ibGradeLevel; // NEW: Fetching the 1-7 grade
+            const percentage = ((achievedScore / maxScore) * 100).toFixed(1);
+            
+            // Color based on 1-7 grade
+            const gradeColor = ibGrade >= 6 ? 'text-green-600' : ibGrade >= 4 ? 'text-yellow-600' : 'text-red-600';
+
+            return `
+                <div class="card bg-white p-8 rounded-xl shadow-lg mt-6">
+                    <h2 class="text-4xl font-extrabold mb-8 text-center text-gray-800 border-b-2 pb-4">Mock Exam Results & Examiner Report</h2>
+                    
+                    <!-- Score Summary Card -->
+                    <div class="bg-ib-blue/10 p-6 rounded-xl border-2 border-ib-blue-border mb-10 text-center">
+                        <p class="text-xl font-semibold text-gray-700">Final Mark Awarded (Raw Score):</p>
+                        <p class="text-6xl font-black mt-2 ib-blue-text transition-colors duration-500 ${gradeColor}">${achievedScore}</p>
+                        <p class="text-2xl font-bold text-gray-600">out of ${maxScore} (<span class="font-black">${percentage}%</span>)</p>
+                        
+                        <!-- NEW: IB GRADE 1-7 -->
+                        <div class="mt-6 border-t pt-4 border-ib-blue-border">
+                            <p class="text-xl font-semibold text-gray-700">Overall IB Grade:</p>
+                            <p class="text-8xl font-black mt-2 ib-gold-text">${ibGrade}</p>
+                            <p class="text-base text-gray-500 mt-1">(On the official 1-7 IB Scale)</p>
+                        </div>
+                    </div>
+
+                    <!-- Examiner's Overall Comment -->
+                    <div class="mb-10 p-6 border-l-4 border-ib-blue-border bg-gray-50 rounded-lg">
+                        <h3 class="text-2xl font-bold mb-3 text-gray-800 flex items-center">
+                            <svg class="w-6 h-6 mr-2 ib-blue-text" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 8h10M7 12h4m1 8l-6-6H4a2 2 0 01-2-2V6a2 2 0 012-2h16a2 2 0 012 2v12a2 2 0 01-2 2h-4l-6 6z"></path></svg>
+                            Overall Examiner's Feedback
+                        </h3>
+                        <p class="text-gray-700 whitespace-pre-wrap leading-relaxed mt-4">${result.overallGradeComment}</p>
+                    </div>
+
+                    <!-- Criteria Breakdown -->
+                    <div class="mb-10">
+                        <h3 class="text-2xl font-bold mb-5 text-gray-800 border-b pb-3">Detailed Rubric Breakdown</h3>
+                        ${result.criteriaBreakdown.map(criterion => { // FIX: Iterate over array instead of object keys
+                            const critKey = criterion.criterionName; // FIX: Get name from property
+                            // Find the max score dynamically, defaulting to 5
+                            const max = config.rubric.find(r => critKey.includes(r.name.split(':')[0]))?.max || 5; 
+                            const critColor = criterion.score / max >= 0.8 ? 'bg-green-100 text-green-700' : criterion.score / max >= 0.5 ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700';
+                            return `
+                                <div class="p-4 mb-4 bg-white rounded-xl border border-gray-200 shadow-sm transition duration-300 hover:shadow-md">
+                                    <div class="flex justify-between items-start mb-2">
+                                        <p class="font-semibold text-lg text-gray-900">${critKey}</p>
+                                        <div class="flex-shrink-0">
+                                            <span class="text-xl font-extrabold py-1 px-3 rounded-full ${critColor}">${criterion.score} / ${max}</span>
+                                        </div>
+                                    </div>
+                                    <p class="text-base text-gray-600 mt-1 italic leading-relaxed">
+                                        <span class="font-medium text-gray-700">Comment:</span> ${criterion.comment}
+                                    </p>
+                                    
+                                    <!-- Excerpt showing WHERE the mark was earned/lost -->
+                                    <div class="mt-3 pt-3 border-t border-gray-100">
+                                        <p class="text-sm font-semibold text-gray-800 mb-1 flex items-center">
+                                            <svg class="w-4 h-4 mr-1 text-ib-blue-text" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-2.414-2.414A1 1 0 0015.586 6H7a2 2 0 00-2 2v11a2 2 0 002 2z"></path></svg>
+                                            Excerpt from your work:
+                                        </p>
+                                        <blockquote class="pl-4 border-l-4 border-yellow-500 italic text-gray-500 bg-yellow-50/50 p-2 rounded-md text-base">
+                                            "${criterion.exemplaryExcerpt || 'No specific excerpt was provided for this criterion.'}"
+                                        </blockquote>
+                                    </div>
+                                    
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+
+                    <!-- Improvement Section -->
+                    <div class="mb-8 p-6 bg-ib-blue/5 rounded-xl border-2 border-ib-blue-border shadow-inner">
+                        <h3 class="text-2xl font-bold mb-3 ib-blue-text flex items-center">
+                             <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                             Suggested Strategies for Improvement
+                        </h3>
+                        <p class="text-gray-700 whitespace-pre-wrap leading-relaxed mt-4">${result.suggestedImprovementEssay}</p>
+                    </div>
+
+                    <!-- Reset Button -->
+                    <button onclick="resetApp()" class="w-full py-4 rounded-xl font-semibold text-xl transition duration-300 bg-gray-800 text-white hover:bg-gray-700 shadow-lg hover:shadow-xl">
+                        Start New Mock Exam Session
+                    </button>
+                </div>
+            `;
+        }
+        
+        // --- Event Handlers (No logic change, only cleanup) ---
+
+        function handleSubjectSelect(subject) {
+            APP_STATE.subject = subject;
+            APP_STATE.step = 'LEVEL_SELECT';
+            render();
+        }
+
+        function handleLevelSelect(level) {
+            APP_STATE.level = level;
+            APP_STATE.step = 'TOPIC_INPUT';
+            render();
+        }
+
+        function handleTopicInput() {
+            const input = document.getElementById('topicInput').value.trim();
+            if (input.length < 3) {
+                APP_STATE.apiError = "Please enter a specific topic or text (minimum 3 characters).";
+                render();
+                return;
+            }
+            APP_STATE.topic = input;
+            APP_STATE.step = 'PAPER_SELECT';
+            render();
+        }
+
+        function handlePaperSelect(paper) {
+            APP_STATE.paper = paper;
+            generateExamPrompt();
+        }
+        
+        // --- NEW FUNCTION: To start the timer and switch to the running state ---
+        function handleStartExam() {
+            APP_STATE.step = 'EXAM_RUNNING';
+            render(); // Rerender will automatically call startTimer() if needed
+        }
+        // -----------------------------------------------------------------------
+        
+        function handleSubmitAnswer() {
+            // Stop the timer and save the final answer
+            if (APP_STATE.intervalId) clearInterval(APP_STATE.intervalId);
+            APP_STATE.intervalId = null;
+
+            const answerArea = document.getElementById('userAnswerArea');
+            if (answerArea) {
+                APP_STATE.userAnswer = answerArea.value;
+            }
+            
+            // Proceed to grading
+            gradePaper();
+        }
+        
+        function handleApiKeySubmit() {
+            const input = document.getElementById('customApiKeyInput').value.trim();
+            if (input && !input.startsWith('AIza')) {
+                APP_STATE.apiError = "The key format looks incorrect. A valid Gemini API key usually starts with 'AIza'. Please double-check the key.";
+                render();
+                return;
+            }
+            APP_STATE.customApiKey = input;
+            APP_STATE.showApiKeyConfig = false;
+            APP_STATE.apiError = null; // Clear previous error
+            render();
+        }
+
+        // Helper to update status message without full re-render
+        function updateApiKeyStatus() {
+            const input = document.getElementById('customApiKeyInput').value.trim();
+            const statusEl = document.getElementById('apiKeyStatus');
+            if (statusEl) {
+                if (input) {
+                    statusEl.className = 'mt-3 text-sm font-medium text-green-700';
+                    statusEl.textContent = 'Current Status: Key Entered';
+                } else {
+                    statusEl.className = 'mt-3 text-sm font-medium text-red-700';
+                    statusEl.textContent = 'Current Status: Using Environment Key';
+                }
+            }
+            // Update state to track the change
+            APP_STATE.customApiKey = input;
+        }
+
+        function resetApp() {
+            if (APP_STATE.intervalId) clearInterval(APP_STATE.intervalId);
+            APP_STATE.intervalId = null;
+
+            Object.assign(APP_STATE, {
+                step: 'SUBJECT_SELECT',
+                subject: null,
+                level: null,
+                topic: '',
+                paper: null,
+                examDuration: 0,
+                timeRemaining: 0,
+                userAnswer: '',
+                gradingResult: null,
+                isApiLoading: false,
+                apiError: null,
+                showApiKeyConfig: false, // Keep config hidden if a key is already set
+            });
+            render();
+        }
+
+        // Expose global functions for button clicks
+        window.handleSubjectSelect = handleSubjectSelect;
+        window.handleLevelSelect = handleLevelSelect;
+        window.handleTopicInput = handleTopicInput;
+        window.handlePaperSelect = handlePaperSelect;
+        window.handleStartExam = handleStartExam; // Expose new function
+        window.handleSubmitAnswer = handleSubmitAnswer;
+        window.handleAnswerInput = handleAnswerInput; 
+        window.resetApp = resetApp;
+        window.render = render; 
+        window.handleApiKeySubmit = handleApiKeySubmit; 
+        window.updateApiKeyStatus = updateApiKeyStatus; 
+        
+        // Initial render
+        document.addEventListener('DOMContentLoaded', render);
+
+    </script>
 </body>
 </html>
