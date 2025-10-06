@@ -7,7 +7,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Use Inter font -->
     <style>
-        @import url('https://fonts.fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
         body {
             font-family: 'Inter', sans-serif;
             /* Lighter, more professional background */
@@ -49,6 +49,7 @@
         .modal-hidden {
             opacity: 0;
             transform: scale(0.95);
+            pointer-events: none; /* Crucial for hidden modals */
         }
     </style>
 </head>
@@ -59,18 +60,19 @@
     </div>
     
     <!-- API Key Configuration Modal (Hidden by default) -->
-    <div id="apiKeyModal" class="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50 modal modal-hidden" onclick="closeKeyModalOutside(event)">
-        <div class="bg-white p-6 sm:p-8 rounded-xl shadow-2xl w-full max-w-lg mx-4" onclick="event.stopPropagation()">
+    <!-- Note: This is outside #app, so delegation must be on the body/document -->
+    <div id="apiKeyModal" class="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50 modal modal-hidden">
+        <div class="bg-white p-6 sm:p-8 rounded-xl shadow-2xl w-full max-w-lg mx-4" data-element="modal-content">
             <h3 class="text-2xl font-bold mb-4 ib-blue-text border-b pb-2">Gemini API Key Setup</h3>
             <p class="text-gray-700 mb-4">
-                To run the AI Grader, you must provide a **Gemini API Key**. This key is saved securely in your browser's local storage and is never sent anywhere else.
+                To run the AI Grader, you must provide a <b>Gemini API Key</b>. This key is saved securely in your browser's local storage.
             </p>
             <div class="mb-4">
                 <label for="apiKeyInput" class="block text-sm font-medium text-gray-700 mb-2">Your Gemini API Key:</label>
                 <input type="password" id="apiKeyInput" value="" placeholder="Enter your key here (sk-...)" class="w-full p-3 border-2 border-gray-300 rounded-lg focus:ring-ib-blue-border focus:border-ib-blue-border text-base shadow-sm">
             </div>
             <div class="flex justify-end space-x-3">
-                <button onclick="saveApiKey()" class="ib-blue text-white py-2 px-4 rounded-lg font-semibold transition duration-300 hover:bg-blue-800 shadow-md">
+                <button data-action="saveApiKey" class="ib-blue text-white py-2 px-4 rounded-lg font-semibold transition duration-300 hover:bg-blue-800 shadow-md">
                     Save Key & Continue
                 </button>
             </div>
@@ -187,12 +189,6 @@
             modal.classList.add('modal-hidden');
         }
         
-        function closeKeyModalOutside(event) {
-            if (event.target.id === 'apiKeyModal') {
-                closeKeyModal();
-            }
-        }
-
         function saveApiKey() {
             const input = document.getElementById('apiKeyInput');
             const key = input.value.trim();
@@ -236,7 +232,8 @@
             APP_STATE.apiError = null;
             render();
 
-            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKeyToUse}`;
+            const apiKey = ""; // Canvas will inject the real key if available
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
 
             let finalPayload = { contents: payload.contents };
             if (payload.systemInstruction) {
@@ -340,7 +337,7 @@
             
             else if (subject === 'global_politics' && paper === '1') {
                 tools = [{ "google_search": {} }];
-                userQuery += ` For Global Politics Paper 1, generate a stimulus-based question set consisting of THREE distinct sources that address the contemporary political issue of "${topic}". The three sources MUST be:
+                userQuery += ` For Global Politics Paper 1, generate a stimulus-based question set consisting of THREE distinct sources that address the contemporary political issue of "${topic}". The three sources <b>MUST</b> be:
                 
                 1. <b>Source 1</b>: A textual excerpt from a primary source (e.g., a speech, an article).
                 2. <b>Source 2 (Visual Source)</b>: A detailed, vivid description of a political cartoon or infographic that clearly represents a concept related to the topic. The description must be detailed enough to be analyzed as a visual text.
@@ -439,19 +436,20 @@
             
 
             // --- SYSTEM PROMPT ---
+            // Changed internal markdown bolding to <b> for visual consistency in the prompt
             const systemPrompt = `You are an expert IB examiner. You will grade the candidate's essay against the official IB ${config.name} ${level.toUpperCase()} Paper ${paper} rubric.
             
             The specific rubric criteria you must use are:
             ${rubricText}
             The total possible marks for this specific paper (P${paper}) is ${maxMarks}.
 
-            CRITICAL: Based on the raw mark awarded (${maxMarks} total), you **MUST** determine the final overall IB grade on the official **1-7 scale** and provide it in the 'ibGradeLevel' field. Use typical, approximate IB grade boundaries for your conversion (e.g., 7 is typically 80%+, 6 is 70-79%, 5 is 60-69%, etc.).
+            CRITICAL: Based on the raw mark awarded (${maxMarks} total), you <b>MUST</b> determine the final overall IB grade on the official <b>1-7 scale</b> and provide it in the 'ibGradeLevel' field. Use typical, approximate IB grade boundaries for your conversion (e.g., 7 is typically 80%+, 6 is 70-79%, 5 is 60-69%, etc.).
 
-            CRITICAL: The feedback in 'overallGradeComment' and all 'criteriaBreakdown' comments MUST be **highly specific and relevant** to the concepts and arguments presented in the candidate's answer. For each criterion's breakdown, you **MUST** include an \`exemplaryExcerpt\`. This must be a single, short, direct quote from the candidate's answer (1-3 sentences max) that either demonstrates the quality that earned the score or, if the score is low, showcases the specific issue or lack of development, **showing the student exactly where their mark was gained or lost.**
+            CRITICAL: The feedback in 'overallGradeComment' and all 'criteriaBreakdown' comments <b>MUST</b> be <b>highly specific and relevant</b> to the concepts and arguments presented in the candidate's answer. For each criterion's breakdown, you <b>MUST</b> include an \`exemplaryExcerpt\`. This must be a single, short, direct quote from the candidate's answer (1-3 sentences max) that either demonstrates the quality that earned the score or, if the score is low, showcases the specific issue or lack of development, <b>showing the student exactly where their mark was gained or lost.</b>
 
-            CRITICAL: The criteria feedback MUST be returned as an array of objects within the 'criteriaBreakdown' field, where each object includes the 'criterionName' field matching the names listed above.
+            CRITICAL: The criteria feedback <b>MUST</b> be returned as an array of objects within the 'criteriaBreakdown' field, where each object includes the 'criterionName' field matching the names listed above.
 
-            Your response MUST strictly adhere to the provided JSON schema. Provide NO text, explanation, or commentary outside of the requested JSON object. For each criterion, provide a score from 0 to its maximum and a detailed comment justifying the score, specifically referencing the quality of the argument, textual/conceptual support, structure, and language. Your overallGradeComment must be a concise, professional summary.`;
+            Your response <b>MUST</b> strictly adhere to the provided JSON schema. Provide NO text, explanation, or commentary outside of the requested JSON object. For each criterion, provide a score from 0 to its maximum and a detailed comment justifying the score, specifically referencing the quality of the argument, textual/conceptual support, structure, and language. Your overallGradeComment must be a concise, professional summary.`;
 
             const userQuery = `
             IB Exam Prompt:
@@ -546,15 +544,17 @@
                     clearInterval(APP_STATE.intervalId);
                     APP_STATE.intervalId = null; // Clear ID
                     
-                    // Stop timer and submit answer 5 seconds after time runs out
+                    // Stop timer and save answer
                     const answerArea = document.getElementById('userAnswerArea');
                     if (answerArea) {
                         APP_STATE.userAnswer = answerArea.value;
                     }
                     
+                    // Transition to grading state
                     APP_STATE.step = 'GRADING_INIT'; 
                     render(); 
                     
+                    // Delay submission slightly to allow user to see "TIME UP!"
                     setTimeout(gradePaper, 5000); 
                 }
             }, 1000);
@@ -579,8 +579,8 @@
                         <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-gray-900">
                             <span class="ib-blue-text">IB Mock Exam Grader</span>
                         </h1>
-                        <!-- Button now uses ID for programmatic event listener -->
-                        <button id="configKeyButton" class="flex items-center text-sm font-semibold p-2 rounded-full transition duration-300 ${isKeyConfigured ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-red-100 text-red-700 hover:bg-red-200'}" title="Configure Gemini API Key">
+                        <!-- Button now uses data-action for delegation -->
+                        <button data-action="openKeyModal" class="flex items-center text-sm font-semibold p-2 rounded-full transition duration-300 hover:scale-[1.02] ${isKeyConfigured ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-red-100 text-red-700 hover:bg-red-200'}" title="Configure Gemini API Key">
                             <svg class="w-5 h-5 mr-1" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" d="M18 8a6 6 0 01-7.743 5.743L10 14h-.01l-.743-.257A6 6 0 012 8c0-.663.078-1.309.227-1.936l-.888-.888a1 1 0 111.414-1.414l.888.888A7.96 7.96 0 0010 0a8 8 0 00-7.96 8c0 1.258.337 2.44 1.144 3.473L3.707 13H3a1 1 0 000 2h3a1 1 0 001-1v-3.793l3.646-3.647a1 1 0 011.414 0l3.647 3.647V14a1 1 0 001 1h3a1 1 0 000-2h-.707l-2.293-2.293A6 6 0 0118 8zm-8 1a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd"></path></svg>
                             ${isKeyConfigured ? 'Key Configured' : 'Configure Key'}
                         </button>
@@ -603,7 +603,7 @@
                 <div class="w-full max-w-5xl mx-auto p-4 mb-4 bg-red-50 border border-red-300 text-red-700 rounded-lg shadow-md" role="alert">
                     <p class="font-bold flex items-center"><svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"></path></svg> API Error:</p>
                     <p class="mt-1">${APP_STATE.apiError}</p>
-                    <button onclick="APP_STATE.apiError=null; render();" class="mt-2 text-sm font-semibold text-red-800 underline">Dismiss</button>
+                    <button data-action="dismissError" class="mt-2 text-sm font-semibold text-red-800 underline">Dismiss</button>
                 </div>
             ` : '';
 
@@ -632,6 +632,13 @@
             if (APP_STATE.step === 'EXAM_RUNNING' && APP_STATE.intervalId === null) {
                 startTimer();
             }
+            
+            // Re-attach input listener for answer area if present
+            const answerArea = document.getElementById('userAnswerArea');
+            if (answerArea) {
+                // Ensure the input handler updates state but does NOT trigger a full render loop
+                answerArea.addEventListener('input', (e) => handleAnswerInput(e.target.value));
+            }
         }
 
         // Helper components for each step
@@ -642,7 +649,7 @@
                     <h2 class="text-3xl font-bold mb-8 text-gray-800 border-b pb-3">1. Select Your Subject</h2>
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
                         ${Object.keys(SUBJECT_CONFIG).map(key => `
-                            <button onclick="handleSubjectSelect('${key}')" class="flex flex-col items-center justify-center p-8 border border-gray-200 rounded-xl transition duration-300 hover:bg-ib-blue/5 hover:border-ib-blue-border hover:shadow-xl group card">
+                            <button data-action="selectSubject" data-value="${key}" class="flex flex-col items-center justify-center p-8 border border-gray-200 rounded-xl transition duration-300 hover:bg-ib-blue/5 hover:border-ib-blue-border hover:shadow-xl group card">
                                 <span class="text-6xl mb-3">${key === 'english' ? '📖' : '🏛️'}</span>
                                 <span class="text-xl font-bold ib-blue-text group-hover:text-blue-700">${SUBJECT_CONFIG[key].name}</span>
                                 <span class="text-sm text-gray-500 mt-1">${key === 'english' ? 'Language & Literature' : 'Global Politics'}</span>
@@ -659,13 +666,13 @@
                     <h2 class="text-3xl font-bold mb-8 text-gray-800 border-b pb-3">2. Select Your Level (${SUBJECT_CONFIG[APP_STATE.subject].name})</h2>
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
                         ${['sl', 'hl'].map(level => `
-                            <button onclick="handleLevelSelect('${level}')" class="flex flex-col items-center justify-center p-8 border-4 rounded-xl transition duration-300 hover:bg-gray-100 hover:shadow-xl group card ${level === 'hl' ? 'border-red-400 hover:border-red-600' : 'border-green-400 hover:border-green-600'}">
+                            <button data-action="selectLevel" data-value="${level}" class="flex flex-col items-center justify-center p-8 border-4 rounded-xl transition duration-300 hover:bg-gray-100 hover:shadow-xl group card ${level === 'hl' ? 'border-red-400 hover:border-red-600' : 'border-green-400 hover:border-green-600'}">
                                 <span class="text-5xl font-extrabold group-hover:text-black">${level.toUpperCase()}</span>
                                 <span class="text-lg font-semibold text-gray-700 mt-2">(${level === 'hl' ? 'Higher Level' : 'Standard Level'})</span>
                             </button>
                         `).join('')}
                     </div>
-                    <button onclick="APP_STATE.step='SUBJECT_SELECT'; render()" class="mt-8 text-sm font-medium text-gray-500 hover:text-ib-blue-text transition duration-300 flex items-center">
+                    <button data-action="backToSubjectSelect" class="mt-8 text-sm font-medium text-gray-500 hover:text-ib-blue-text transition duration-300 flex items-center">
                         <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
                         Back to Subject Selection
                     </button>
@@ -682,10 +689,10 @@
                     <label for="topicInput" class="block text-sm font-medium text-gray-700 mb-2">Topic / Text / Issue:</label>
                     <input type="text" id="topicInput" value="${APP_STATE.topic}" placeholder="e.g., The Handmaid's Tale, The role of NGOs in conflict" class="w-full p-4 border-2 border-gray-300 rounded-xl focus:ring-ib-blue-border focus:border-ib-blue-border mb-8 text-lg shadow-sm">
                     
-                    <button onclick="handleTopicInput()" class="w-full ib-blue text-white py-4 rounded-xl font-semibold text-lg transition duration-300 hover:bg-blue-800 shadow-md hover:shadow-lg">
+                    <button data-action="topicInputSubmit" class="w-full ib-blue text-white py-4 rounded-xl font-semibold text-lg transition duration-300 hover:bg-blue-800 shadow-md hover:shadow-lg">
                         Proceed to Paper Selection
                     </button>
-                    <button onclick="APP_STATE.step='LEVEL_SELECT'; render()" class="mt-4 text-sm font-medium text-gray-500 hover:text-ib-blue-text transition duration-300 flex items-center">
+                    <button data-action="backToLevelSelect" class="mt-4 text-sm font-medium text-gray-500 hover:text-ib-blue-text transition duration-300 flex items-center">
                         <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
                         Back to Level Selection
                     </button>
@@ -720,14 +727,14 @@
 
                     <div class="grid grid-cols-1 sm:grid-cols-2 ${isGP && isHL ? 'lg:grid-cols-3' : ''} gap-6">
                         ${paperData.map(p => `
-                            <button onclick="handlePaperSelect('${p.num}')" class="p-6 border-2 border-gray-200 rounded-xl transition duration-300 hover:bg-ib-blue/5 hover:border-ib-blue-border hover:shadow-xl group card flex flex-col items-center text-center">
+                            <button data-action="selectPaper" data-value="${p.num}" class="p-6 border-2 border-gray-200 rounded-xl transition duration-300 hover:bg-ib-blue/5 hover:border-ib-blue-border hover:shadow-xl group card flex flex-col items-center text-center">
                                 <span class="text-3xl font-extrabold ib-blue-text">${p.title}</span>
                                 <span class="text-base text-gray-600 mt-1">${p.subtitle}</span>
                                 <span class="text-sm text-gray-400 mt-3">Duration: ${p.time}</span>
                             </button>
                         `).join('')}
                     </div>
-                    <button onclick="APP_STATE.step='TOPIC_INPUT'; render()" class="mt-8 text-sm font-medium text-gray-500 hover:text-ib-blue-text transition duration-300 flex items-center">
+                    <button data-action="backToTopicInput" class="mt-8 text-sm font-medium text-gray-500 hover:text-ib-blue-text transition duration-300 flex items-center">
                         <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
                         Back to Topic Input
                     </button>
@@ -770,13 +777,13 @@
 
                         <!-- Start Exam Button -->
                         <div class="mt-8">
-                            <button onclick="handleStartExam()" class="w-full py-5 rounded-xl font-extrabold text-2xl transition duration-300 ib-blue text-white hover:bg-blue-800 shadow-lg hover:shadow-xl flex items-center justify-center">
+                            <button data-action="startExam" class="w-full py-5 rounded-xl font-extrabold text-2xl transition duration-300 ib-blue text-white hover:bg-blue-800 shadow-lg hover:shadow-xl flex items-center justify-center">
                                 <svg class="w-7 h-7 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.108a12.022 12.022 0 011.666 1.485v5.378a2 2 0 01-2 2h-2.585a2 2 0 00-1.415.585L12 21.033l-1.618-1.618a2 2 0 00-1.415-.585H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1"></path></svg>
                                 Start Timed Exam Now
                             </button>
                         </div>
-                        <p class="text-sm text-center text-red-600 mt-4 font-medium">Warning: The timer (${time}) will start immediately upon clicking this button and cannot be paused.</p>
-                        <button onclick="APP_STATE.step='PAPER_SELECT'; render()" class="mt-4 text-sm font-medium text-gray-500 hover:text-ib-blue-text transition duration-300 flex items-center mx-auto">
+                        <p class="text-sm text-red-600 mt-4 font-medium text-center"><b>Warning:</b> The timer (${time}) will start immediately upon clicking this button and cannot be paused.</p>
+                        <button data-action="backToPaperSelect" class="mt-4 text-sm font-medium text-gray-500 hover:text-ib-blue-text transition duration-300 flex items-center mx-auto">
                             <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
                             Back to Paper Selection
                         </button>
@@ -837,11 +844,10 @@
                                 rows="20" 
                                 class="w-full p-4 border-2 border-gray-300 rounded-xl focus:ring-ib-blue-border focus:border-ib-blue-border text-base shadow-inner transition duration-200" 
                                 placeholder="Start writing your high-quality essay response here. Pay attention to the structure, use of evidence/examples, and sophisticated language appropriate for the IB level."
-                                oninput="handleAnswerInput(this.value)"
                             >${APP_STATE.userAnswer}</textarea>
                         </div>
                         
-                        <button onclick="handleSubmitAnswer()" ${isFinished ? 'disabled' : ''} class="mt-8 w-full py-4 rounded-xl font-semibold text-xl transition duration-300 ${isFinished ? 'bg-gray-400 cursor-not-allowed' : 'ib-blue text-white hover:bg-blue-800 shadow-lg hover:shadow-xl'}">
+                        <button data-action="submitAnswer" ${isFinished ? 'disabled' : ''} class="mt-8 w-full py-4 rounded-xl font-semibold text-xl transition duration-300 ${isFinished ? 'bg-gray-400 cursor-not-allowed' : 'ib-blue text-white hover:bg-blue-800 shadow-lg hover:shadow-xl'}">
                             ${isFinished ? 'Time Expired - Submitting' : 'Submit for Grading'}
                         </button>
                     </div>
@@ -954,14 +960,14 @@
                     </div>
 
                     <!-- Reset Button -->
-                    <button onclick="resetApp()" class="w-full py-4 rounded-xl font-semibold text-xl transition duration-300 bg-gray-800 text-white hover:bg-gray-700 shadow-lg hover:shadow-xl">
+                    <button data-action="resetApp" class="w-full py-4 rounded-xl font-semibold text-xl transition duration-300 bg-gray-800 text-white hover:bg-gray-700 shadow-lg hover:shadow-xl">
                         Start New Mock Exam Session
                     </button>
                 </div>
             `;
         }
         
-        // --- Event Handlers (No logic change, only cleanup) ---
+        // --- Event Handlers (Called by Delegation) ---
 
         function handleSubjectSelect(subject) {
             APP_STATE.subject = subject;
@@ -994,7 +1000,7 @@
         
         function handleStartExam() {
             APP_STATE.step = 'EXAM_RUNNING';
-            render(); // Rerender will automatically call startTimer() if needed
+            render(); 
         }
         
         function handleSubmitAnswer() {
@@ -1031,30 +1037,88 @@
             });
             render();
         }
+        
+        // --- CORE EVENT DELEGATION LOGIC (Refined for robustness) ---
 
-        // Expose global functions for button clicks
-        window.handleSubjectSelect = handleSubjectSelect;
-        window.handleLevelSelect = handleLevelSelect;
-        window.handleTopicInput = handleTopicInput;
-        window.handlePaperSelect = handlePaperSelect;
-        window.handleStartExam = handleStartExam; 
-        window.handleSubmitAnswer = handleSubmitAnswer;
-        window.handleAnswerInput = handleAnswerInput; 
-        window.resetApp = resetApp;
-        window.render = render; 
-        
-        window.openKeyModal = openKeyModal;
-        window.closeKeyModalOutside = closeKeyModalOutside;
-        window.saveApiKey = saveApiKey;
-        
-        // Initial render and programmatic event attachment
-        document.addEventListener('DOMContentLoaded', () => {
-            render();
-            // Attach programmatic listener for robustness
-            const configButton = document.getElementById('configKeyButton');
-            if (configButton) {
-                configButton.addEventListener('click', openKeyModal);
+        function handleDelegatedClick(event) {
+            // Use closest() to find the element with data-action, starting from the click target
+            const targetActionElement = event.target.closest('[data-action]');
+
+            // Check if click is on the modal backdrop to close it
+            const modal = document.getElementById('apiKeyModal');
+            if (modal && !modal.classList.contains('modal-hidden') && event.target.id === 'apiKeyModal') {
+                 closeKeyModal();
+                 return;
             }
+
+            if (!targetActionElement) return;
+
+            const action = targetActionElement.dataset.action;
+            const value = targetActionElement.dataset.value;
+
+            // Handle actions
+            switch (action) {
+                case 'openKeyModal':
+                    openKeyModal();
+                    break;
+                case 'saveApiKey':
+                    saveApiKey();
+                    break;
+                case 'dismissError':
+                    APP_STATE.apiError = null; 
+                    render();
+                    break;
+                case 'selectSubject':
+                    handleSubjectSelect(value);
+                    break;
+                case 'selectLevel':
+                    handleLevelSelect(value);
+                    break;
+                case 'backToSubjectSelect':
+                    APP_STATE.step='SUBJECT_SELECT'; 
+                    render();
+                    break;
+                case 'topicInputSubmit':
+                    handleTopicInput();
+                    break;
+                case 'backToLevelSelect':
+                    APP_STATE.step='LEVEL_SELECT'; 
+                    render();
+                    break;
+                case 'selectPaper':
+                    handlePaperSelect(value);
+                    break;
+                case 'startExam':
+                    handleStartExam();
+                    break;
+                case 'backToPaperSelect':
+                    APP_STATE.step='PAPER_SELECT'; 
+                    render();
+                    break;
+                case 'submitAnswer':
+                    handleSubmitAnswer();
+                    break;
+                case 'resetApp':
+                    resetApp();
+                    break;
+                default:
+                    console.warn('Unhandled action:', action);
+            }
+        }
+        
+        /**
+         * Sets up the single, delegated click listener on the entire document body.
+         * This ensures clicks on elements outside the main #app container (like modals) are caught.
+         */
+        function setupDelegation() {
+            // Attaching to document.body covers all elements, including the modal.
+            document.body.addEventListener('click', handleDelegatedClick);
+        }
+
+        // --- Initialization ---
+        document.addEventListener('DOMContentLoaded', () => {
+            setupDelegation();
+            render();
         });
 
     </script>
